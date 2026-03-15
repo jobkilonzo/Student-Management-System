@@ -1,14 +1,20 @@
 import { Router } from "express";
-import { addCourse, deleteCourse, getCourseById, getCourses, updateCourse } from "../../controller/registrar/controller.courses.js";
+import {
+  addCourse,
+  deleteCourse,
+  getCourseById,
+  getCourses,
+  updateCourse,
+  getDashboardStats
+} from "../../controller/registrar/controller.courses.js";
 
-const coursesRouter = Router()
-coursesRouter.post('/create', addCourse)
-coursesRouter.get('/', getCourses)
-coursesRouter.get('/:id', getCourseById)
-coursesRouter.put('/:id', updateCourse)
-coursesRouter.delete('/create', deleteCourse)
+const coursesRouter = Router();
 
+coursesRouter.post('/create', addCourse);
+coursesRouter.get('/dashboard', getDashboardStats);   // ✅ MOVE THIS UP
+coursesRouter.get('/', getCourses);
+coursesRouter.get('/:id', getCourseById);
+coursesRouter.put('/:id', updateCourse);
+coursesRouter.delete('/:id', deleteCourse);
 
-// units
-
-export default coursesRouter
+export default coursesRouter;
