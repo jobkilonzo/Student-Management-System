@@ -3,8 +3,11 @@ import {
   assignUnit,
   getAssignments,
   getAssignmentsWithControls,
-  updateControl
+  updateControl,
+  unassignUnit,
+  checkIfUserIsTutor
 } from "../../controller/registrar/controller.unitAssignmentController.js";
+import { authenticateToken } from "../../middleware/auth.js"; // your file
 
 const unitAssignment = express.Router();
 
@@ -19,5 +22,6 @@ unitAssignment.get("/with-controls", getAssignmentsWithControls);
 
 // Toggle marks entry / edit/delete permissions
 unitAssignment.post("/update-control", updateControl);
-
+unitAssignment.post("/unassign", unassignUnit);// GET tutors assigned to registrar
+unitAssignment.get("/check-is-tutor", authenticateToken, checkIfUserIsTutor);
 export default unitAssignment;
