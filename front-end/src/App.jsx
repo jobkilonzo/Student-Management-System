@@ -16,6 +16,7 @@ import RegistrarCourses from "./pages/RegistrarDashboard/RegistrarCourses";
 import AddUnits from "./pages/RegistrarDashboard/AddUnits";
 import RegistrarStudents from "./pages/RegistrarDashboard/RegistrarStudents";
 import RegistrarReports from "./pages/RegistrarDashboard/RegistrarReports";
+import GenerateTranscript from "./pages/RegistrarDashboard/GenerateTranscript";
 import AssignUnitsPage from "./pages/RegistrarDashboard/AssignUnitsPage";
 
 import AssignmentsPage from "./pages/Tutor/AssignmentsPage";
@@ -96,6 +97,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["registrar", "admin"]}>
               <RegistrarCourses />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/registrar/transcript"
+          element={
+            <ProtectedRoute allowedRoles={["registrar", "admin"]}>
+              <GenerateTranscript />
             </ProtectedRoute>
           }
         />

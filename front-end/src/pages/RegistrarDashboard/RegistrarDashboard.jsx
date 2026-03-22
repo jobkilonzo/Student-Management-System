@@ -122,6 +122,12 @@ const RegistrarDashboard = () => {
           description="Assign units to tutors."
           icon="🧑‍🏫"
         />
+        <PortalItem
+          label="Generate Transcript"
+          to="/registrar/transcript"
+          description="Generate full student transcripts."
+          icon="📜"
+        />
         {isTutor && (
           <PortalItem
             label="Tutor Dashboard"
@@ -130,6 +136,7 @@ const RegistrarDashboard = () => {
             icon="👨‍🏫"
           />
         )}
+
       </div>
 
       {/* Quick Stats */}

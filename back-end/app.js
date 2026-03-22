@@ -10,6 +10,7 @@ import studentsRouter from "./routes/registrar/routes.students.js";
 import unitAssignment from "./routes/registrar/routes.unitAssignment.js";
 import tutorRoutes from "./routes/tutor/route.unit.js";
 import markRoutes from "./routes/tutor/route.marks.js"; 
+import generateTranscriptRouter from "./routes/registrar/route.generateTranscript.js"; 
 
 import { initDatabase } from "./database/init.js";
 
@@ -33,6 +34,7 @@ initDatabase();
 app.use('/api/v1/auth', authRouter)
 app.use('/api/v1/registrar/courses', coursesRouter)
 app.use('/api/v1/registrar/units', unitsRouter)
+app.use('/api/v1/registrar/transcript', generateTranscriptRouter)
 app.use('/api/v1/registrar/students', studentsRouter)
 app.use('/api/v1/registrar/unit-assignments', unitAssignment)
 app.use('/api/v1/tutor', tutorRoutes);
