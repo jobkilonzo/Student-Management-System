@@ -1,25 +1,28 @@
 import db from "../../database/mysql_database.js";
 
 /** Get tutor assigned units */
-export const getTutorClasses = (req, res) => {
+export const getTutorClasses = async (req, res) => {
   const tutorId = req.user.id;
 
   const query = `
-    SELECT ua.unit_id, u.unit_name, c.course_name, ua.module
+    SELECT ua.unit_id, u.unit_name AS name, c.course_name AS course, ua.module AS term
     FROM unit_assignments ua
     JOIN units u ON ua.unit_id = u.unit_id
     JOIN courses c ON ua.course_id = c.course_id
     WHERE ua.tutor_id = ?
   `;
 
-  db.query(query, [tutorId], (err, results) => {
-    if (err) return res.status(500).json({ error: "Database error" });
-    res.json({ classes: results });
-  });
+  try {
+    const [results] = await db.query(query, [tutorId]);
+    res.json({ units: results }); // 'units' matches your React front-end
+  } catch (err) {
+    console.error("Error fetching assigned units:", err);
+    res.status(500).json({ error: "Failed to fetch assigned units" });
+  }
 };
 
 /** Get students + existing marks */
-export const getStudentsForMarks = (req, res) => {
+export const getStudentsForMarks = async (req, res) => {
   const tutorId = req.user.id;
   const unitId = Number(req.params.unitId);
 
@@ -43,13 +46,13 @@ export const getStudentsForMarks = (req, res) => {
     ORDER BY s.reg_no
   `;
 
-  db.query(query, [unitId, tutorId], (err, results) => {
-    if (err) {
-      console.error("DB ERROR:", err);
-      return res.status(500).json({ error: "Database query failed" });
-    }
+  try {
+    const [results] = await db.query(query, [unitId, tutorId]);
     res.json({ students: results });
-  });
+  } catch (err) {
+    console.error("Error fetching students for marks:", err);
+    res.status(500).json({ error: "Database query failed" });
+  }
 };
 
 /** Grade calculator */
@@ -61,8 +64,8 @@ const getGrade = (total) => {
   return "F";
 };
 
-/** Save marks (Edit/Save) */
-export const saveMarks = (req, res) => {
+/** Save marks (bulk or single) */
+export const saveMarks = async (req, res) => {
   const { unitId, marks } = req.body;
 
   if (!unitId || !marks?.length) {
@@ -87,17 +90,17 @@ export const saveMarks = (req, res) => {
       grade = VALUES(grade)
   `;
 
-  db.query(query, [values], (err) => {
-    if (err) {
-      console.error("Save failed:", err);
-      return res.status(500).json({ error: "Save failed" });
-    }
+  try {
+    await db.query(query, [values]);
     res.json({ message: "Marks saved successfully" });
-  });
+  } catch (err) {
+    console.error("Error saving marks:", err);
+    res.status(500).json({ error: "Save failed" });
+  }
 };
 
 /** Delete a student's mark */
-export const deleteMark = (req, res) => {
+export const deleteMark = async (req, res) => {
   const { unitId, studentId } = req.body;
 
   if (!unitId || !studentId) {
@@ -105,11 +108,12 @@ export const deleteMark = (req, res) => {
   }
 
   const query = "DELETE FROM marks WHERE unit_id = ? AND student_id = ?";
-  db.query(query, [unitId, studentId], (err) => {
-    if (err) {
-      console.error("Delete failed:", err);
-      return res.status(500).json({ error: "Delete failed" });
-    }
+
+  try {
+    await db.query(query, [unitId, studentId]);
     res.json({ message: "Mark deleted successfully" });
-  });
+  } catch (err) {
+    console.error("Error deleting mark:", err);
+    res.status(500).json({ error: "Delete failed" });
+  }
 };
