@@ -15,6 +15,7 @@ const RegistrarDashboard = () => {
   });
 
   const [loading, setLoading] = useState(true);
+  const [assignedTutors, setAssignedTutors] = useState([]); // new state
 
   // Fetch dashboard stats from backend
   useEffect(() => {
@@ -30,6 +31,20 @@ const RegistrarDashboard = () => {
     };
 
     fetchStats();
+  }, []);
+
+  const [isTutor, setIsTutor] = useState(false);
+
+  useEffect(() => {
+    const checkTutor = async () => {
+      try {
+        const res = await makeRequest.get("/registrar/unit-assignments/check-is-tutor");
+        setIsTutor(res.data.isTutor);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    checkTutor();
   }, []);
 
   const handleLogout = () => {
@@ -103,10 +118,18 @@ const RegistrarDashboard = () => {
         />
         <PortalItem
           label="Assign Units"
-          to="/registrar/assign-units"   // <-- link to your existing page
+          to="/registrar/assign-units"
           description="Assign units to tutors."
           icon="🧑‍🏫"
         />
+        {isTutor && (
+          <PortalItem
+            label="Tutor Dashboard"
+            to="/tutor/dashboard"
+            description="Access your tutor dashboard and assigned units."
+            icon="👨‍🏫"
+          />
+        )}
       </div>
 
       {/* Quick Stats */}

@@ -1,58 +1,61 @@
 import { useState, useEffect } from "react";
 import { makeRequest } from "../../../axios";
+import { useNavigate } from "react-router-dom";
 
 const AssignUnitsPage = () => {
+  const navigate = useNavigate();
+
   const [tutors, setTutors] = useState([]);
   const [units, setUnits] = useState([]);
   const [assignments, setAssignments] = useState([]);
 
   const [selectedTutor, setSelectedTutor] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Fetch data including mark controls
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const [tutorsRes, unitsRes, assignmentsRes] = await Promise.all([
-          makeRequest.get("auth/users?tutor=true"),
-          makeRequest.get("registrar/units/with-course-name"),
-          makeRequest.get("registrar/unit-assignments/with-controls"),
-        ]);
+  // Fetch tutors, units, assignments
+ useEffect(() => {
+  const fetchData = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [tutorsRes, unitsRes, assignmentsRes] = await Promise.all([
+        makeRequest.get("auth/users?tutor=true"),
+        makeRequest.get("registrar/units/with-course-name"),
+        makeRequest.get("registrar/unit-assignments/with-controls"),
+      ]);
 
-        // Exclude Admin and Accountant roles from tutors
-        setTutors(
-          (tutorsRes.data?.users || []).filter(
-            (u) => !["Admin", "Accountant"].includes(u.role)
-          )
-        );
+      // Remove admin and accountant (case-insensitive)
+      setTutors(
+        (tutorsRes.data?.users || []).filter(
+          (u) =>
+            !["admin", "accountant", "registrar"].includes((u.role || "").trim().toLowerCase())
+        )
+      );
 
-        setUnits(unitsRes.data?.units || []);
-        setAssignments(assignmentsRes.data?.assignments || []);
-      } catch (err) {
-        console.error("Fetch error:", err);
-        setError("Failed to load data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  // Check if a unit is already assigned to any tutor
-  const isUnitAssigned = (unitId, module) => {
-    return assignments.some(
-      (a) => a.unit_id === unitId && a.module === module
-    );
+      setUnits(unitsRes.data?.units || []);
+      setAssignments(assignmentsRes.data?.assignments || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Failed to load data");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Assign a unit to a tutor
+  fetchData();
+}, []);
+
+  // Check if a unit is already assigned
+  const isUnitAssigned = (unitId) => {
+    return assignments.some((a) => Number(a.unit_id) === Number(unitId));
+  };
+
+  // Assign unit
   const handleAssign = async (e) => {
     e.preventDefault();
     setError("");
@@ -64,21 +67,33 @@ const AssignUnitsPage = () => {
     }
 
     const unitObj = units.find((u) => u.unit_id === Number(selectedUnit));
+    if (!unitObj) {
+      setError("Selected unit not found");
+      return;
+    }
 
-    if (isUnitAssigned(unitObj.unit_id, unitObj.module)) {
+    if (isUnitAssigned(unitObj.unit_id)) {
       setError("This unit is already assigned to a tutor");
       return;
     }
 
-    try {
-      await makeRequest.post("registrar/unit-assignments/assign-unit", {
-        tutorId: selectedTutor,
-        unitId: unitObj.unit_id,
-        courseId: unitObj.course_id,
-        module: unitObj.module,
-      });
+    const confirmAssign = window.confirm(
+      `Assign ${unitObj.unit_name} to selected tutor?`
+    );
+    if (!confirmAssign) return;
 
-      setSuccess("Unit assigned successfully!");
+    try {
+      const response = await makeRequest.post(
+        "registrar/unit-assignments/assign-unit",
+        {
+          tutorId: Number(selectedTutor),
+          unitId: unitObj.unit_id,
+          courseId: unitObj.course_id ?? null,
+          module: unitObj.module ?? null,
+        }
+      );
+
+      setSuccess(response.data?.message || "Unit assigned successfully!");
 
       const tutorObj = tutors.find((t) => t.id === Number(selectedTutor));
 
@@ -86,7 +101,7 @@ const AssignUnitsPage = () => {
         {
           tutor_id: Number(selectedTutor),
           unit_id: unitObj.unit_id,
-          tutorName: tutorObj?.name,
+          tutorName: tutorObj?.name || "Unknown",
           unit_name: unitObj.unit_name,
           course_name: unitObj.course_name,
           module: unitObj.module,
@@ -98,22 +113,34 @@ const AssignUnitsPage = () => {
 
       setSelectedTutor("");
       setSelectedUnit("");
+      setSearchTerm("");
     } catch (err) {
       console.error("Error assigning unit:", err);
-      setError(err?.response?.data?.message || "Failed to assign unit");
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          "Failed to assign unit"
+      );
     }
   };
 
-  // Toggle enable/disable flags for marks entry or edit/delete
+  // Toggle flags
   const handleToggle = async (assignment, field) => {
     try {
       const updatedValue = !assignment[field];
-      await makeRequest.post("registrar/unit-assignments/update-control", {
+
+      const payload = {
         tutorId: assignment.tutor_id,
         unitId: assignment.unit_id,
-        field,
-        value: updatedValue ? 1 : 0,
-      });
+        can_enter_marks: assignment.can_enter_marks ? 1 : 0,
+        can_edit_delete: assignment.can_edit_delete ? 1 : 0,
+      };
+      payload[field] = updatedValue ? 1 : 0;
+
+      await makeRequest.post(
+        "registrar/unit-assignments/update-control",
+        payload
+      );
 
       setAssignments((prev) =>
         prev.map((a) =>
@@ -128,10 +155,47 @@ const AssignUnitsPage = () => {
     }
   };
 
+  // Unassign unit
+  const handleUnassign = async (assignment) => {
+    const confirmDelete = window.confirm(
+      `Unassign ${assignment.unit_name} from ${assignment.tutorName}?`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await makeRequest.post("registrar/unit-assignments/unassign", {
+        tutorId: assignment.tutor_id,
+        unitId: assignment.unit_id,
+      });
+
+      setAssignments((prev) =>
+        prev.filter(
+          (a) =>
+            !(
+              a.tutor_id === assignment.tutor_id &&
+              a.unit_id === assignment.unit_id
+            )
+        )
+      );
+
+      setSuccess("Unit unassigned successfully");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to unassign unit");
+    }
+  };
+
   if (loading) return <div className="p-8 text-gray-600">Loading data...</div>;
 
   return (
     <div className="min-h-screen bg-indigo-50 p-8">
+      <button
+        onClick={() => navigate(-1)}
+        className="mb-4 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+      >
+        ← Back
+      </button>
+
       <h1 className="text-3xl font-bold mb-6">Assign Units to Tutors</h1>
 
       {error && (
@@ -146,7 +210,10 @@ const AssignUnitsPage = () => {
       )}
 
       {/* Assignment Form */}
-      <form onSubmit={handleAssign} className="flex flex-col md:flex-row gap-4 mb-4">
+      <form
+        onSubmit={handleAssign}
+        className="flex flex-col md:flex-row gap-4 mb-4 items-center"
+      >
         <select
           value={selectedTutor}
           onChange={(e) => setSelectedTutor(e.target.value)}
@@ -161,6 +228,14 @@ const AssignUnitsPage = () => {
           ))}
         </select>
 
+        <input
+          type="text"
+          placeholder="Search unit..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border rounded px-4 py-2"
+        />
+
         <select
           value={selectedUnit}
           onChange={(e) => setSelectedUnit(e.target.value)}
@@ -169,8 +244,12 @@ const AssignUnitsPage = () => {
         >
           <option value="">Select a Unit</option>
           {units
-            // Remove units already assigned to any tutor
-            .filter((u) => !isUnitAssigned(u.unit_id, u.module))
+            .filter((u) => !isUnitAssigned(u.unit_id))
+            .filter((u) =>
+              `${u.unit_name} ${u.course_name} ${u.module}`
+                .toLowerCase()
+                .includes(searchTerm.toLowerCase())
+            )
             .map((u) => (
               <option key={u.unit_id} value={u.unit_id}>
                 {u.unit_name} - {u.course_name} ({u.module})
@@ -182,7 +261,9 @@ const AssignUnitsPage = () => {
           type="submit"
           disabled={!selectedUnit || !selectedTutor}
           className={`px-4 py-2 rounded text-white ${
-            !selectedUnit || !selectedTutor ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600"
+            !selectedUnit || !selectedTutor
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-blue-600"
           }`}
         >
           Assign Unit
@@ -200,12 +281,13 @@ const AssignUnitsPage = () => {
               <th className="px-4 py-2 border">Module</th>
               <th className="px-4 py-2 border text-center">Enable Marks Entry</th>
               <th className="px-4 py-2 border text-center">Enable Edit/Delete</th>
+              <th className="px-4 py-2 border text-center">Action</th>
             </tr>
           </thead>
           <tbody>
             {assignments.length === 0 ? (
               <tr>
-                <td colSpan="6" className="text-center py-4 text-gray-500">
+                <td colSpan="7" className="text-center py-4 text-gray-500">
                   No unit assignments found
                 </td>
               </tr>
@@ -229,6 +311,14 @@ const AssignUnitsPage = () => {
                       checked={a.can_edit_delete}
                       onChange={() => handleToggle(a, "can_edit_delete")}
                     />
+                  </td>
+                  <td className="px-4 py-2 border text-center">
+                    <button
+                      onClick={() => handleUnassign(a)}
+                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                    >
+                      Unassign
+                    </button>
                   </td>
                 </tr>
               ))
