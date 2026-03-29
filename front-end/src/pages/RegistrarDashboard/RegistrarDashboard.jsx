@@ -15,9 +15,8 @@ const RegistrarDashboard = () => {
   });
 
   const [loading, setLoading] = useState(true);
-  const [assignedTutors, setAssignedTutors] = useState([]); // new state
+  const [isTutor, setIsTutor] = useState(false);
 
-  // Fetch dashboard stats from backend
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -33,12 +32,12 @@ const RegistrarDashboard = () => {
     fetchStats();
   }, []);
 
-  const [isTutor, setIsTutor] = useState(false);
-
   useEffect(() => {
     const checkTutor = async () => {
       try {
-        const res = await makeRequest.get("/registrar/unit-assignments/check-is-tutor");
+        const res = await makeRequest.get(
+          "/registrar/unit-assignments/check-is-tutor"
+        );
         setIsTutor(res.data.isTutor);
       } catch (err) {
         console.error(err);
@@ -48,120 +47,158 @@ const RegistrarDashboard = () => {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("sms_token"); // match axios instance key
+    localStorage.removeItem("sms_token");
     localStorage.removeItem("user");
     navigate("/login");
   };
 
   return (
-    <div className="p-6 min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header & Logout */}
-      <div className="mb-8 flex justify-between items-center">
+    <div className="p-6 min-h-screen bg-gray-50 space-y-10">
+      
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          <h1 className="text-3xl font-semibold text-gray-900">
             Registrar Dashboard
           </h1>
-          <p className="text-gray-600 mt-2 flex items-center gap-2">
-            <span className="w-1 h-6 bg-blue-500 rounded-full"></span>
-            Manage courses, units, students, and their registrations.
+          <p className="text-gray-500 text-sm mt-1">
+            Manage courses, students, and academic operations
           </p>
         </div>
+
         <button
           onClick={handleLogout}
-          className="group flex items-center gap-2 px-5 py-2.5 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border border-gray-200 hover:border-red-200"
+          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-100 transition"
         >
-          <span className="text-xl group-hover:scale-110 transition-transform duration-300">🚪</span>
-          <span className="font-medium text-gray-700 group-hover:text-red-600 transition-colors duration-300">
-            Logout
-          </span>
+          <span className="text-lg">🚪</span>
+          Logout
         </button>
       </div>
 
       {/* Welcome Banner */}
-      <div className="mb-8 bg-white rounded-2xl shadow-sm p-6 border border-blue-100">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg">
-            👤
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800">
-              Welcome back, Registrar!
-            </h2>
-            <p className="text-gray-600">
-              {loading
-                ? "Loading dashboard stats..."
-                : `You have ${stats.pendingApprovals} pending registrations to review today.`}
-            </p>
-          </div>
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl p-6 shadow-md flex items-center gap-4">
+        <div className="w-12 h-12 flex items-center justify-center bg-white/20 rounded-xl text-2xl">
+          👤
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold">Welcome back, Registrar</h2>
+          <p className="text-sm opacity-90">
+            {loading
+              ? "Loading dashboard insights..."
+              : `${stats.pendingApprovals} pending registrations need review.`}
+          </p>
         </div>
       </div>
 
-      {/* Action Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <PortalItem
-          label="Manage Courses"
-          to="/registrar/courses"
-          description="Add courses and define units."
-          icon="📚"
-        />
-        <PortalItem
-          label="Manage Students"
-          to="/registrar/students"
-          description="Add students and assign courses."
-          icon="🎓"
-        />
-        <PortalItem
-          label="View Reports"
-          to="/registrar/reports"
-          description="View courses, units, and student details."
-          icon="📄"
-        />
-        <PortalItem
-          label="Assign Units"
-          to="/registrar/assign-units"
-          description="Assign units to tutors."
-          icon="🧑‍🏫"
-        />
-        <PortalItem
-          label="Generate Transcript"
-          to="/registrar/transcript"
-          description="Generate full student transcripts."
-          icon="📜"
-        />
-        {isTutor && (
+      {/* Quick Actions */}
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">
+          Quick Actions
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <PortalItem
-            label="Tutor Dashboard"
-            to="/tutor/dashboard"
-            description="Access your tutor dashboard and assigned units."
-            icon="👨‍🏫"
+            label="Manage Courses"
+            to="/registrar/courses"
+            description="Add courses and define units."
+            icon="📚"
           />
-        )}
-
+          <PortalItem
+            label="Manage Students"
+            to="/registrar/students"
+            description="Add students and assign courses."
+            icon="🎓"
+          />
+          <PortalItem
+            label="View Reports"
+            to="/registrar/reports"
+            description="View courses and analytics."
+            icon="📄"
+          />
+          <PortalItem
+            label="Assign Units"
+            to="/registrar/assign-units"
+            description="Assign units to tutors."
+            icon="🧑‍🏫"
+          />
+          <PortalItem
+            label="Generate Transcript"
+            to="/registrar/transcript"
+            description="Generate student transcripts."
+            icon="📜"
+          />
+          {isTutor && (
+            <PortalItem
+              label="Tutor Dashboard"
+              to="/tutor/dashboard"
+              description="Access your tutor panel."
+              icon="👨‍🏫"
+            />
+          )}
+        </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="text-2xl mb-2">📊</div>
-          <div className="text-sm text-gray-600">Total Courses</div>
-          <div className="text-2xl font-bold text-gray-800">{stats.totalCourses}</div>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="text-2xl mb-2">👥</div>
-          <div className="text-sm text-gray-600">Active Students</div>
-          <div className="text-2xl font-bold text-gray-800">{stats.activeStudents}</div>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="text-2xl mb-2">📝</div>
-          <div className="text-sm text-gray-600">Units</div>
-          <div className="text-2xl font-bold text-gray-800">{stats.units}</div>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="text-2xl mb-2">⏳</div>
-          <div className="text-sm text-gray-600">Pending Approvals</div>
-          <div className="text-2xl font-bold text-amber-600">{stats.pendingApprovals}</div>
+      {/* Stats */}
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">
+          Overview
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <StatCard
+            icon="📊"
+            title="Total Courses"
+            value={stats.totalCourses}
+            loading={loading}
+          />
+          <StatCard
+            icon="👥"
+            title="Active Students"
+            value={stats.activeStudents}
+            loading={loading}
+          />
+          <StatCard
+            icon="📝"
+            title="Units"
+            value={stats.units}
+            loading={loading}
+          />
+          <StatCard
+            icon="⏳"
+            title="Pending Approvals"
+            value={stats.pendingApprovals}
+            highlight
+            loading={loading}
+          />
         </div>
       </div>
+    </div>
+  );
+};
+
+/* Improved Stat Card with Icon Styling */
+const StatCard = ({ icon, title, value, highlight, loading }) => {
+  return (
+    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-1 transition-all duration-200">
+      
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{title}</p>
+        <div className="text-xl bg-gray-100 w-10 h-10 flex items-center justify-center rounded-lg">
+          {icon}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-4" />
+      ) : (
+        <h2
+          className={`text-3xl font-semibold mt-4 ${
+            highlight ? "text-amber-500" : "text-gray-900"
+          }`}
+        >
+          {value}
+        </h2>
+      )}
     </div>
   );
 };

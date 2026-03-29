@@ -2,8 +2,8 @@ import db from "../database/mysql_database.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { SECRET_KEY } from "../config/env.js";
-
-const ALLOWED_ROLES = ["admin", "registrar", "student", "accountant", "tutor"];
+import moment from "moment";
+const ALLOWED_ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer"];
 
 /** LOGIN */
 export const login = async (req, res) => {
@@ -16,73 +16,194 @@ export const login = async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const query = "SELECT id, name, email, password, role FROM users WHERE email = ? LIMIT 1";
-    const [results] = await db.execute(query, [email]);
+    const [results] = await db.execute(
+      `SELECT id, first_name, middle_name, last_name, email, password, role 
+       FROM users WHERE email = ? LIMIT 1`,
+      [email]
+    );
 
-    if (!results || results.length === 0) {
+    if (!results.length) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const user = results[0];
     const match = await bcrypt.compare(password, user.password);
+
     if (!match) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const payload = { id: user.id, name: user.name, email: user.email, role: user.role };
+    let studentData = null;
+
+    // ✅ If student, fetch student record using user_id
+    if (user.role === "student") {
+      const [student] = await db.execute(
+        "SELECT id, reg_no, course_id FROM students WHERE user_id = ?",
+        [user.id]
+      );
+      studentData = student[0] || null;
+    }
+
+    const payload = {
+      id: user.id,
+      first_name: user.first_name,
+      middle_name: user.middle_name,
+      last_name: user.last_name,
+      email: user.email,
+      role: user.role,
+    };
+
     const token = jwt.sign(payload, SECRET_KEY, { expiresIn: "8h" });
 
-    return res.json({ token, user: payload });
+    return res.json({
+      token,
+      user: payload,
+      student: studentData, // ✅ helpful for frontend
+    });
+
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Server error", details: err.message });
   }
 };
 
-/** REGISTER USER */
-export const registerUser = async (req, res) => {
-  try {
-    let { name, email, password, role } = req.body;
-    name = name?.trim();
-    email = email?.trim().toLowerCase();
-    password = password?.trim();
+/** REGISTER USER (with course if student) */
 
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ error: "name, email, password and role are required" });
+export const registerUser = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    let { first_name, middle_name, last_name, email, password, role } = req.body;
+
+    email = email?.trim().toLowerCase();
+    role = role?.trim().toLowerCase();
+
+    if (!first_name || !last_name || !email || !password || !role) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
+    const ALLOWED_ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer"];
     if (!ALLOWED_ROLES.includes(role)) {
       return res.status(400).json({ error: "Invalid role" });
     }
 
-    if (role === "admin") {
-      return res.status(403).json({ error: "Cannot create admin user via this endpoint" });
+    // ✅ Check existing user
+    const [existingUser] = await connection.execute(
+      "SELECT id FROM users WHERE email = ?",
+      [email]
+    );
+
+    if (existingUser.length > 0) {
+      return res.status(400).json({ error: "User already exists" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const insertQuery = "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)";
-    const [result] = await db.execute(insertQuery, [name, email, hashedPassword, role]);
+    // ✅ Insert user
+    const [userResult] = await connection.execute(
+      `INSERT INTO users 
+       (first_name, middle_name, last_name, email, password, role, created_at) 
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [first_name, middle_name || null, last_name, email, hashedPassword, role]
+    );
 
-    return res.status(201).json({
-      message: "User created",
-      user: { id: result.insertId, name, email, role },
-    });
-  } catch (err) {
-    console.error(err);
-    if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ error: "Email already in use" });
+    const user_id = userResult.insertId;
+    let reg_no = null;
+
+    // ✅ If student → insert into students table
+    if (role === "student") {
+      const { course_id } = req.body;
+
+      if (!course_id) {
+        throw new Error("course_id is required for student creation");
+      }
+
+      const [courseResults] = await connection.execute(
+        "SELECT course_code FROM courses WHERE course_id = ?",
+        [course_id]
+      );
+
+      if (!courseResults.length) {
+        throw new Error("Invalid course_id");
+      }
+
+      const courseCode = courseResults[0].course_code;
+      reg_no = await generateRegNo(course_id, courseCode);
+
+      await connection.execute(
+        `INSERT INTO students
+        (user_id, reg_no, first_name, middle_name, last_name, email, course_id, createdAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          user_id,
+          reg_no,
+          first_name,
+          middle_name || null,
+          last_name,
+          email,
+          course_id,
+          moment().format("YYYY-MM-DD HH:mm:ss"),
+        ]
+      );
     }
-    return res.status(500).json({ error: "Database error", details: err.message });
+
+    await connection.commit();
+
+    res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user_id,
+      reg_no,
+    });
+
+  } catch (err) {
+    await connection.rollback();
+    console.error("Register User Error:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    connection.release();
   }
+};
+
+// Generate registration number (same as before)
+const generateRegNo = async (courseId, courseCode) => {
+  const year = moment().format("YYYY");
+  const [countResults] = await db.execute(
+    "SELECT COUNT(*) AS total FROM students WHERE course_id=? AND YEAR(createdAt)=?",
+    [courseId, year]
+  );
+  const nextNumber = (countResults[0].total || 0) + 1;
+  return `JP/${courseCode}/${year}/${String(nextNumber).padStart(3, "0")}`;
 };
 
 /** GET ALL USERS */
 export const getUsers = async (req, res) => {
   try {
-    const query = "SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC";
-    const [results] = await db.execute(query);
-    return res.json({ users: results });
+    let query = `
+      SELECT id, first_name, middle_name, last_name, email, role, created_at 
+      FROM users
+    `;
+
+    const params = [];
+
+    if (req.query.tutor === "true") {
+      query += " WHERE role = ?";
+      params.push("tutor");
+    }
+
+    query += " ORDER BY created_at DESC";
+
+    const [results] = await db.execute(query, params);
+
+    // map to include explicit first_name/last_name fields with name fallback
+    const users = results.map((u) => ({
+      ...u,
+      name: [u.first_name, u.middle_name, u.last_name].filter(Boolean).join(" "),
+    }));
+
+    return res.json({ users });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Database error", details: err.message });
@@ -103,53 +224,61 @@ export const updateMe = async (req, res) => {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
 
     const userId = req.user.id;
-    const { name, email, currentPassword, newPassword } = req.body;
+    const { first_name, middle_name, last_name, email, currentPassword, newPassword } = req.body;
 
-    if (!name && !email && !newPassword) {
-      return res.status(400).json({ error: "Provide data to update (name, email, newPassword)" });
+    if (!first_name && !last_name && !email && !newPassword) {
+      return res.status(400).json({ error: "Provide data to update" });
     }
 
-    const getUserQuery = "SELECT email, password, role FROM users WHERE id = ? LIMIT 1";
-    const [results] = await db.execute(getUserQuery, [userId]);
-    if (!results || results.length === 0) return res.status(404).json({ error: "User not found" });
+    const [results] = await db.execute(
+      "SELECT password, role FROM users WHERE id = ? LIMIT 1",
+      [userId]
+    );
 
     const existingUser = results[0];
 
     const updateFields = [];
     const updateValues = [];
 
-    if (name) { updateFields.push("name = ?"); updateValues.push(name); }
+    if (first_name) { updateFields.push("first_name = ?"); updateValues.push(first_name); }
+    if (middle_name !== undefined) { updateFields.push("middle_name = ?"); updateValues.push(middle_name); }
+    if (last_name) { updateFields.push("last_name = ?"); updateValues.push(last_name); }
     if (email) { updateFields.push("email = ?"); updateValues.push(email); }
 
     if (newPassword) {
-      if (!currentPassword) return res.status(400).json({ error: "currentPassword is required to change password" });
+      if (!currentPassword) {
+        return res.status(400).json({ error: "currentPassword is required" });
+      }
 
       const match = await bcrypt.compare(currentPassword, existingUser.password);
-      if (!match) return res.status(401).json({ error: "Current password is incorrect" });
+      if (!match) return res.status(401).json({ error: "Incorrect current password" });
 
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-      updateFields.push("password = ?"); updateValues.push(hashedPassword);
+      updateFields.push("password = ?");
+      updateValues.push(hashedPassword);
     }
 
     if (updateFields.length > 0) {
-      const updateQuery = `UPDATE users SET ${updateFields.join(", ")} WHERE id = ?`;
+      const query = `UPDATE users SET ${updateFields.join(", ")} WHERE id = ?`;
       updateValues.push(userId);
-      await db.execute(updateQuery, updateValues);
+      await db.execute(query, updateValues);
     }
 
     const updatedUser = {
       id: userId,
-      name: name || req.user.name,
+      first_name: first_name || req.user.first_name,
+      middle_name: middle_name ?? req.user.middle_name,
+      last_name: last_name || req.user.last_name,
       email: email || req.user.email,
       role: existingUser.role,
     };
 
     const token = jwt.sign(updatedUser, SECRET_KEY, { expiresIn: "8h" });
+
     return res.json({ token, user: updatedUser });
 
   } catch (err) {
     console.error(err);
-    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "Email already in use" });
     return res.status(500).json({ error: "Database error", details: err.message });
   }
 };
@@ -158,29 +287,35 @@ export const updateMe = async (req, res) => {
 export const updateUserByAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, newPassword } = req.body;
-
-    if (!name && !email && !newPassword) return res.status(400).json({ error: "Provide data to update" });
+    const { first_name, middle_name, last_name, email, newPassword } = req.body;
 
     const updateFields = [];
     const updateValues = [];
 
-    if (name) { updateFields.push("name = ?"); updateValues.push(name); }
+    if (first_name) { updateFields.push("first_name = ?"); updateValues.push(first_name); }
+    if (middle_name !== undefined) { updateFields.push("middle_name = ?"); updateValues.push(middle_name); }
+    if (last_name) { updateFields.push("last_name = ?"); updateValues.push(last_name); }
     if (email) { updateFields.push("email = ?"); updateValues.push(email); }
+
     if (newPassword) {
       const hashedPassword = await bcrypt.hash(newPassword, 10);
-      updateFields.push("password = ?"); updateValues.push(hashedPassword);
+      updateFields.push("password = ?");
+      updateValues.push(hashedPassword);
     }
 
-    const updateQuery = `UPDATE users SET ${updateFields.join(", ")} WHERE id = ?`;
+    if (updateFields.length === 0) {
+      return res.status(400).json({ error: "Provide data to update" });
+    }
+
+    const query = `UPDATE users SET ${updateFields.join(", ")} WHERE id = ?`;
     updateValues.push(id);
 
-    await db.execute(updateQuery, updateValues);
+    await db.execute(query, updateValues);
 
     return res.json({ message: "User updated successfully" });
+
   } catch (err) {
     console.error(err);
-    if (err.code === "ER_DUP_ENTRY") return res.status(409).json({ error: "Email already in use" });
     return res.status(500).json({ error: "Database error", details: err.message });
   }
 };
@@ -194,12 +329,14 @@ export const deleteUserByAdmin = async (req, res) => {
       return res.status(400).json({ error: "You cannot delete your own account." });
     }
 
-    const deleteQuery = "DELETE FROM users WHERE id = ?";
-    const [result] = await db.execute(deleteQuery, [id]);
+    const [result] = await db.execute("DELETE FROM users WHERE id = ?", [id]);
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: "User not found" });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
     return res.json({ message: "User deleted successfully" });
+
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Database error", details: err.message });

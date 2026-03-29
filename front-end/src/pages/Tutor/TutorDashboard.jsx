@@ -24,8 +24,10 @@ const TutorDashboard = () => {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const userRes = await makeRequest.get("/auth/me");
-        setUser(userRes.data.user || { name: "Unknown" });
+        const response = await makeRequest.get("/auth/me");
+        const userData = response.data; // get actual user data from response
+  
+  setUser({ name: userData.user.first_name || "Unknown" });
       } catch (err) {
         setUser({ name: "Unknown" });
       }

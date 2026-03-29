@@ -39,7 +39,7 @@ export const getAssignments = async (req, res) => {
         ua.*,
         u.unit_name,
         c.course_name,
-        users.name AS tutorName
+        users.first_name AS tutorName
       FROM unit_assignments ua
       JOIN units u ON ua.unit_id = u.unit_id
       JOIN courses c ON ua.course_id = c.course_id
@@ -62,7 +62,7 @@ export const getAssignmentsWithControls = async (req, res) => {
         ua.*,
         u.unit_name,
         c.course_name,
-        users.name AS tutorName,
+        users.first_name AS tutorName,
         IFNULL(umc.can_enter_marks, 0) AS can_enter_marks,
         IFNULL(umc.can_edit_delete, 0) AS can_edit_delete
       FROM unit_assignments ua

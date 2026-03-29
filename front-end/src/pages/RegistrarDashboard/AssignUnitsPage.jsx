@@ -24,16 +24,15 @@ const AssignUnitsPage = () => {
     setError("");
     try {
       const [tutorsRes, unitsRes, assignmentsRes] = await Promise.all([
-        makeRequest.get("auth/users?tutor=true"),
+        makeRequest.get("auth/users?role=tutor"),
         makeRequest.get("registrar/units/with-course-name"),
         makeRequest.get("registrar/unit-assignments/with-controls"),
       ]);
 
-      // Remove admin and accountant (case-insensitive)
+      // Only tutors should be shown in assign-units (defensive fallback)
       setTutors(
         (tutorsRes.data?.users || []).filter(
-          (u) =>
-            !["admin", "accountant", "registrar"].includes((u.role || "").trim().toLowerCase())
+          (u) => (u.role || "").trim().toLowerCase() === "tutor"
         )
       );
 
@@ -101,7 +100,7 @@ const AssignUnitsPage = () => {
         {
           tutor_id: Number(selectedTutor),
           unit_id: unitObj.unit_id,
-          tutorName: tutorObj?.name || "Unknown",
+          tutorName: tutorObj?.first_name || tutorObj?.name || "Unknown",
           unit_name: unitObj.unit_name,
           course_name: unitObj.course_name,
           module: unitObj.module,
@@ -223,7 +222,7 @@ const AssignUnitsPage = () => {
           <option value="">Select a Tutor</option>
           {tutors.map((u) => (
             <option key={u.id} value={u.id}>
-              {u.name} ({u.role})
+              {u.first_name || u.name || "Unknown"} ({u.role})
             </option>
           ))}
         </select>

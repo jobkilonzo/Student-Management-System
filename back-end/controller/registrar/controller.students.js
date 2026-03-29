@@ -175,7 +175,9 @@ export const addStudent = async (req, res) => {
     ];
 
     const [result] = await db.execute(insertQuery, values);
-    res.status(201).json({ success: true, message: "Student added successfully", id: result.insertId, reg_no });
+    const studentId = result.insertId;
+
+    res.status(201).json({ success: true, message: "Student added successfully", id: studentId, reg_no });
   } catch (err) {
     console.error("Add Student Error:", err);
     res.status(500).json({ error: err.message });
@@ -184,7 +186,11 @@ export const addStudent = async (req, res) => {
 
 // UPDATE student
 export const updateStudent = async (req, res) => {
+  const connection = await db.getConnection();
+
   try {
+    await connection.beginTransaction();
+
     const { id } = req.params;
     const body = req.body || {};
     const photoPath = req.file ? req.file.path : null;
@@ -206,12 +212,26 @@ export const updateStudent = async (req, res) => {
       address,
     } = body;
 
+    // ✅ 1. GET user_id from students
+    const [[student]] = await connection.execute(
+      "SELECT user_id FROM students WHERE id=?",
+      [id]
+    );
+
+    if (!student) {
+      throw new Error("Student not found");
+    }
+
+    const userId = student.user_id;
+
+    // ✅ 2. UPDATE students table
     let query = `
       UPDATE students
       SET first_name=?, middle_name=?, last_name=?, gender=?, dob=?, 
           id_number=?, phone=?, email=?, course_id=?, module=?, term=?, 
           guardian_name=?, guardian_phone=?, address=?, updatedAt=?
     `;
+
     const values = [
       first_name,
       middle_name || null,
@@ -234,19 +254,32 @@ export const updateStudent = async (req, res) => {
       query += ", photo=?";
       values.push(photoPath);
     }
+
     query += " WHERE id=?";
     values.push(id);
 
-    const [result] = await db.execute(query, values);
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Student not found" });
+    await connection.execute(query, values);
+
+    // ✅ 3. UPDATE users table
+    await connection.execute(
+      `UPDATE users 
+       SET first_name=?, middle_name=?, last_name=?, email=? 
+       WHERE id=?`,
+      [first_name, middle_name || null, last_name, email, userId]
+    );
+
+    await connection.commit();
 
     res.json({ success: true, message: "Student updated successfully" });
+
   } catch (err) {
+    await connection.rollback();
     console.error("Update Student Error:", err);
     res.status(500).json({ error: err.message });
+  } finally {
+    connection.release();
   }
 };
-
 // GET all students
 export const getStudents = async (req, res) => {
   try {

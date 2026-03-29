@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { makeRequest } from "../../axios";
+import { makeRequest } from "../../../axios";
 import toast, { Toaster } from "react-hot-toast";
+import RegistrarDashboard from "../RegistrarDashboard/RegistrarDashboard";
 
 const ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer"];
 
@@ -83,7 +84,7 @@ const AdminDashboard = () => {
       for (const course of coursesData) {
         try {
           const unitsRes = await makeRequest.get(`registrar/units/course/${course.course_id}`);
-          totalUnits += unitsRes.data.units ? unitsRes.data.units.length : unitsRes.data.length || 0;
+          totalUnits += unitsRes.data.units ? unitsRes.data.units.length : (unitsRes.data.length || 0);
         } catch (err) {
           console.error(`Error fetching units for course ${course.course_id}:`, err);
         }
@@ -244,6 +245,16 @@ const AdminDashboard = () => {
                 User Management
               </button>
               <button
+                onClick={() => setActiveTab("registrar")}
+                className={`px-6 py-4 text-sm font-medium ${
+                  activeTab === "registrar"
+                    ? "border-b-2 border-blue-500 text-blue-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Registrar Panel
+              </button>
+              <button
                 onClick={() => setActiveTab("system")}
                 className={`px-6 py-4 text-sm font-medium ${
                   activeTab === "system"
@@ -260,7 +271,7 @@ const AdminDashboard = () => {
             {activeTab === "users" && (
               <>
                 {/* SEARCH & CREATE USER */}
-                <div className="flex flex-col lg:flex-row gap-6 mb-6">
+                <div className="flex flex-col lg:flex-row items-center justify-between gap-4 mb-6">
                   <div className="flex-1">
                     <input
                       placeholder="Search users by name or email..."
@@ -269,73 +280,16 @@ const AdminDashboard = () => {
                       className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
                     />
                   </div>
-                  <div className="flex-1">
-                    <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                      <input
-                        placeholder="First Name"
-                        value={form.first_name}
-                        onChange={e => setForm({ ...form, first_name: e.target.value })}
-                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
-                      <input
-                        placeholder="Last Name"
-                        value={form.last_name}
-                        onChange={e => setForm({ ...form, last_name: e.target.value })}
-                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
-                      <input
-                        placeholder="Email"
-                        type="email"
-                        value={form.email}
-                        onChange={e => setForm({ ...form, email: e.target.value })}
-                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
-                      <input
-                        placeholder="Password"
-                        type="password"
-                        value={form.password}
-                        onChange={e => setForm({ ...form, password: e.target.value })}
-                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
+                  <button
+                    onClick={() => setActiveTab("users")}
+                    className="whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition duration-150"
+                  >
+                    Go to Create User
+                  </button>
+                </div>
 
-                      <select
-                        value={form.role}
-                        onChange={e => setForm({ ...form, role: e.target.value, course_id: "" })}
-                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {ROLES.map(r => (
-                          <option key={r} value={r}>
-                            {r.charAt(0).toUpperCase() + r.slice(1).replace("_", " ")}
-                          </option>
-                        ))}
-                      </select>
-
-                      {form.role === "student" && courses.length > 0 && (
-                        <select
-                          value={form.course_id}
-                          onChange={e => setForm({ ...form, course_id: e.target.value })}
-                          className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          required
-                        >
-                          <option value="">Select Course</option>
-                          {courses.map(c => (
-                            <option key={c.course_id} value={c.course_id}>{c.course_name}</option>
-                          ))}
-                        </select>
-                      )}
-
-                      <button
-                        type="submit"
-                        className="md:col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow transition duration-200"
-                      >
-                        Create User
-                      </button>
-                    </form>
-                  </div>
+                <div className="mb-6 text-sm text-gray-600">
+                  Use the full user management page for creating or editing users.
                 </div>
 
                 {/* USERS TABLE */}
@@ -424,6 +378,21 @@ const AdminDashboard = () => {
               </>
             )}
 
+            {activeTab === "registrar" && (
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-semibold text-gray-900">Registrar Panel</h3>
+                  <button
+                    onClick={() => setActiveTab("users")}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-lg"
+                  >
+                    Back to Admin
+                  </button>
+                </div>
+                <RegistrarDashboard />
+              </div>
+            )}
+
             {activeTab === "system" && (
               <div className="space-y-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">System Overview</h3>
@@ -434,22 +403,40 @@ const AdminDashboard = () => {
                     <h4 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h4>
                     <div className="space-y-3">
                       <button
+                        onClick={() => navigate("/admin/users")}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+                      >
+                        Users Management
+                      </button>
+                      <button
+                        onClick={() => navigate("/admin/courses")}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+                      >
+                        Course Management
+                      </button>
+                      <button
+                        onClick={() => navigate("/admin/transcripts")}
+                        className="w-full bg-pink-600 hover:bg-pink-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+                      >
+                        Transcript Log
+                      </button>
+                      <button
+                        onClick={() => navigate("/admin/notifications")}
+                        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+                      >
+                        Notifications
+                      </button>
+                      <button
                         onClick={() => navigate("/admin/settings")}
                         className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
                       >
                         System Settings
                       </button>
                       <button
-                        onClick={() => navigate("/registrar/courses")}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
-                      >
-                        Manage Courses
-                      </button>
-                      <button
-                        onClick={() => navigate("/registrar/students")}
+                        onClick={() => navigate("/registrar")}
                         className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
                       >
-                        Manage Students
+                        Registrar Panel
                       </button>
                       <button
                         onClick={() => navigate("/exam-officer")}
@@ -596,6 +583,7 @@ const AdminDashboard = () => {
         </Modal>
       )}
     </div>
+    
   );
 };
 

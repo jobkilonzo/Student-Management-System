@@ -7,7 +7,7 @@ const USERS_TABLE_SQL = `
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    role ENUM('admin','registrar','student','accountant','tutor') NOT NULL DEFAULT 'student',
+    role ENUM('admin','registrar','student','accountant','tutor','exam_officer') NOT NULL DEFAULT 'student',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB;
 `;
@@ -57,6 +57,64 @@ const STUDENTS_TABLE_SQL = `
   ) ENGINE=InnoDB;
 `;
 
+const MARKS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS marks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    unit_id INT NOT NULL,
+    cat_marks DECIMAL(5,2),
+    end_term_marks DECIMAL(5,2),
+    total_marks DECIMAL(5,2),
+    grade VARCHAR(5),
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (unit_id) REFERENCES units(unit_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_student_unit (student_id, unit_id)
+  ) ENGINE=InnoDB;
+`;
+
+const NOTIFICATIONS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    role ENUM('admin','registrar','student','accountant','tutor','exam_officer','all') NOT NULL DEFAULT 'admin',
+    is_read TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB;
+`;
+
+const UNIT_ASSIGNMENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS unit_assignments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tutor_id INT NOT NULL,
+    unit_id INT NOT NULL,
+    course_id INT NOT NULL,
+    module VARCHAR(100) DEFAULT 'Module 1',
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tutor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (unit_id) REFERENCES units(unit_id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_tutor_unit (tutor_id, unit_id)
+  ) ENGINE=InnoDB;
+`;
+
+const UNIT_MARK_CONTROLS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS unit_mark_controls (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tutor_id INT NOT NULL,
+    unit_id INT NOT NULL,
+    can_enter_marks TINYINT(1) NOT NULL DEFAULT 0,
+    can_edit_delete TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tutor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (unit_id) REFERENCES units(unit_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_tutor_unit_control (tutor_id, unit_id)
+  ) ENGINE=InnoDB;
+`;
+
 const DEFAULT_ADMIN_EMAIL = "admin@school.com";
 const DEFAULT_ADMIN_PASSWORD = "Admin123!";
 const DEFAULT_ADMIN_NAME = "Administrator";
@@ -68,6 +126,10 @@ export const initDatabase = async () => {
     await db.execute(COURSES_TABLE_SQL);
     await db.execute(UNITS_TABLE_SQL);
     await db.execute(STUDENTS_TABLE_SQL);
+    await db.execute(MARKS_TABLE_SQL);
+    await db.execute(NOTIFICATIONS_TABLE_SQL);
+    await db.execute(UNIT_ASSIGNMENTS_TABLE_SQL);
+    await db.execute(UNIT_MARK_CONTROLS_TABLE_SQL);
 
     console.log("All tables created or already exist");
 

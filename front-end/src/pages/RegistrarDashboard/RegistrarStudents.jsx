@@ -134,12 +134,6 @@ const RegistrarStudents = () => {
           headers: { "Content-Type": "multipart/form-data" },
         });
         alert("Student updated successfully!");
-      } else {
-        // CREATE student
-        await makeRequest.post("/registrar/students/create", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        alert("Student registered successfully!");
       }
 
       // Reset form

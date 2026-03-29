@@ -7,6 +7,7 @@ import {
   deleteStudent,
   importStudentsExcel,
 } from "../../controller/registrar/controller.students.js";
+import { authenticateToken, authorizeRoles } from "../../middleware/auth.js";
 
 import multer from "multer";
 const router = Router();
@@ -27,6 +28,10 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const upload = multer({ storage });
+
+// All routes require authentication and registrar/admin role
+router.use(authenticateToken);
+router.use(authorizeRoles("registrar", "admin"));
 
 // Use upload.single("photo") for photo field
 router.post("/create", upload.single("photo"), addStudent);
