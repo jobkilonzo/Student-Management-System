@@ -1,349 +1,640 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { makeRequest } from "../../axios";
+import toast, { Toaster } from "react-hot-toast";
 
-const ROLES = ["registrar", "student", "accountant", "tutor"];
+const ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer"];
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const role = localStorage.getItem("sms_role");
+
+  /** ---------------- STATE ---------------- */
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "registrar" });
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const [profileForm, setProfileForm] = useState({
-    name: "",
-    email: "",
-    currentPassword: "",
-    newPassword: "",
+  const [stats, setStats] = useState({
+    total: 0,
+    students: 0,
+    staff: 0,
+    active: 0,
+    courses: 0,
+    units: 0
   });
-  const [profileError, setProfileError] = useState("");
-  const [profileSuccess, setProfileSuccess] = useState("");
-  const [profileLoading, setProfileLoading] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [activeTab, setActiveTab] = useState("users");
 
-  const fetchUsers = async () => {
+  const [form, setForm] = useState({
+    first_name: "",
+    middle_name: "",
+    last_name: "",
+    email: "",
+    password: "",
+    role: "registrar",
+    course_id: ""
+  });
+
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({
+    first_name: "",
+    middle_name: "",
+    last_name: "",
+    email: "",
+    role: "registrar",
+    course_id: ""
+  });
+
+  const [resetUser, setResetUser] = useState(null);
+  const [newPassword, setNewPassword] = useState("");
+
+  /** ---------------- FETCH USERS ---------------- */
+  const fetchUsers = async (pageNum = 1, searchTerm = search) => {
     try {
-      const res = await makeRequest.get("auth/users");
-      setUsers(res.data.users || []);
+      const res = await makeRequest.get(`auth/users?page=${pageNum}&limit=10&search=${searchTerm}`);
+      const usersData = res.data.users || res.data;
+      setUsers(usersData);
+
+      const totalPages = res.data.pagination?.pages || 1;
+      setPages(totalPages);
+      setPage(pageNum);
+
+      const total = usersData.length;
+      const students = usersData.filter(u => u.role === "student").length;
+      const staff = usersData.filter(u => ["registrar","accountant","tutor","admin","exam_officer"].includes(u.role)).length;
+      const active = total;
+      setStats(prev => ({ ...prev, total, students, staff, active }));
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching users:", err.response || err);
+      toast.error("Failed to fetch users");
     }
   };
 
+  /** ---------------- FETCH COURSES ---------------- */
+  const fetchCourses = async () => {
+    try {
+      const res = await makeRequest.get("registrar/courses");
+      const coursesData = res.data || [];
+      setCourses(coursesData);
+      setStats(prev => ({ ...prev, courses: coursesData.length }));
+
+      // Fetch units count
+      let totalUnits = 0;
+      for (const course of coursesData) {
+        try {
+          const unitsRes = await makeRequest.get(`registrar/units/course/${course.course_id}`);
+          totalUnits += unitsRes.data.units ? unitsRes.data.units.length : unitsRes.data.length || 0;
+        } catch (err) {
+          console.error(`Error fetching units for course ${course.course_id}:`, err);
+        }
+      }
+      setStats(prev => ({ ...prev, units: totalUnits }));
+    } catch (err) {
+      console.error("Error fetching courses:", err);
+    }
+  };
+
+  /** ---------------- INIT ---------------- */
+  useEffect(() => {
+    fetchUsers();
+    fetchCourses();
+  }, []);
+
+  /** ---------------- SEARCH (Debounce) ---------------- */
+  useEffect(() => {
+    const delay = setTimeout(() => fetchUsers(1, search), 400);
+    return () => clearTimeout(delay);
+  }, [search]);
+
+  /** ---------------- ACTIONS ---------------- */
   const handleLogout = () => {
-    localStorage.removeItem("sms_token");
-    localStorage.removeItem("sms_role");
-    localStorage.removeItem("sms_user");
+    localStorage.clear();
     navigate("/login");
   };
 
-  const handleResetPassword = async (userId) => {
-    const newPassword = window.prompt("Enter new password for this user:");
-    if (!newPassword) return;
-
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
     try {
-      await makeRequest.put(`auth/users/${userId}`, { newPassword });
-      await fetchUsers();
-      alert("Password updated successfully.");
-    } catch (err) {
-      alert(err?.response?.data?.error || "Failed to update password.");
-    }
-  };
-
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm("Are you sure you want to delete this user?")) {
-      return;
-    }
-
-    try {
-      await makeRequest.delete(`auth/users/${userId}`);
-      await fetchUsers();
-      alert("User deleted successfully.");
-    } catch (err) {
-      alert(err?.response?.data?.error || "Failed to delete user.");
-    }
-  };
-
-  useEffect(() => {
-    fetchUsers();
-
-    const storedUser = localStorage.getItem("sms_user");
-    if (storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        setProfileForm((prev) => ({
-          ...prev,
-          name: parsed.name || "",
-          email: parsed.email || "",
-        }));
-      } catch (e) {
-        // ignore parse errors
-      }
-    }
-  }, []);
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError("");
-    setSuccess("");
-    setLoading(true);
-
-    try {
-      const res = await makeRequest.post("auth/register", form);
-      setSuccess(`Created ${res.data.user.role} account for ${res.data.user.name}`);
-      setForm({ name: "", email: "", password: "", role: "registrar" });
+      await makeRequest.post("auth/register", {
+        first_name: form.first_name,
+        middle_name: form.middle_name,
+        last_name: form.last_name,
+        email: form.email,
+        password: form.password,
+        role: form.role,
+        course_id: form.role === "student" ? form.course_id : null
+      });
+      toast.success("User created");
+      setForm({ first_name: "", middle_name: "", last_name: "", email: "", password: "", role: "registrar", course_id: "" });
       fetchUsers();
     } catch (err) {
-      setError(err?.response?.data?.error || "Failed to create user");
-    } finally {
-      setLoading(false);
+      toast.error(err?.response?.data?.error || "Error");
     }
   };
 
-  const handleProfileUpdate = async (event) => {
-    event.preventDefault();
-    setProfileError("");
-    setProfileSuccess("");
-
-    if (profileForm.newPassword && !profileForm.currentPassword) {
-      setProfileError("Please enter your current password to set a new password.");
-      return;
-    }
-
-    setProfileLoading(true);
-
+  const handleDeleteUser = async (id) => {
+    if (!window.confirm("Delete user?")) return;
     try {
-      const res = await makeRequest.put("auth/me", profileForm);
-      const { token, user } = res.data;
-
-      if (token) {
-        localStorage.setItem("sms_token", token);
-      }
-      if (user) {
-        localStorage.setItem("sms_user", JSON.stringify({ name: user.name, email: user.email }));
-      }
-
-      setProfileSuccess("Profile updated successfully.");
-    } catch (err) {
-      setProfileError(err?.response?.data?.error || "Failed to update profile");
-    } finally {
-      setProfileLoading(false);
+      await makeRequest.delete(`auth/users/${id}`);
+      toast.success("User deleted");
+      fetchUsers();
+    } catch {
+      toast.error("Delete failed");
     }
   };
 
+  const handleEditUser = (u) => {
+    setEditingUser(u);
+    setEditForm({
+      first_name: u.first_name,
+      middle_name: u.middle_name,
+      last_name: u.last_name,
+      email: u.email,
+      role: u.role,
+      course_id: u.course_id || ""
+    });
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await makeRequest.put(`auth/users/${editingUser.id}`, {
+        ...editForm,
+        course_id: editForm.role === "student" ? editForm.course_id : null
+      });
+      toast.success("Updated");
+      setEditingUser(null);
+      fetchUsers();
+    } catch {
+      toast.error("Update failed");
+    }
+  };
+
+  const handleResetPassword = async () => {
+    try {
+      await makeRequest.put(`auth/users/${resetUser.id}`, { newPassword });
+      toast.success("Password updated");
+      setResetUser(null);
+      setNewPassword("");
+    } catch {
+      toast.error("Failed");
+    }
+  };
+
+  /** ---------------- UI ---------------- */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-slate-50 to-blue-50 px-8 py-12">
-      <div className="w-full mx-auto px-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-10">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-800">Admin Dashboard</h1>
-            <p className="text-sm text-slate-600 mt-2">
-              Manage user accounts and view system users.
-            </p>
-          </div>
-          <div className="mt-4 sm:mt-0">
-            <button
-              onClick={handleLogout}
-              className="rounded-full bg-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300"
-            >
-              Logout
-            </button>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <Toaster position="top-right" />
+
+      {/* HEADER */}
+      <div className="bg-white shadow-lg border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+              <p className="text-gray-600 mt-1">Manage users, courses, and system settings</p>
+            </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate("/registrar")}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-lg shadow transition duration-200"
+              >
+                Registrar Panel
+              </button>
+              <button
+                onClick={() => navigate("/exam-management")}
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg shadow transition duration-200"
+              >
+                Exam Management
+              </button>
+              <button
+                onClick={handleLogout}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg shadow transition duration-200"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-8">
-            <section className="bg-white rounded-3xl shadow-lg p-8">
-              <h2 className="text-xl font-semibold text-slate-800 mb-4">Update your account</h2>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* STATS CARDS */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
+          <StatCard title="Total Users" value={stats.total} icon="👥" color="blue" />
+          <StatCard title="Students" value={stats.students} icon="🎓" color="green" />
+          <StatCard title="Staff" value={stats.staff} icon="👨‍🏫" color="purple" />
+          <StatCard title="Courses" value={stats.courses} icon="📚" color="yellow" />
+          <StatCard title="Units" value={stats.units} icon="📖" color="pink" />
+          <StatCard title="Active" value={stats.active} icon="✅" color="indigo" />
+        </div>
 
-              {profileError && (
-                <div className="mb-4 rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3">
-                  {profileError}
+        {/* TABS */}
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden mb-8">
+          <div className="border-b border-gray-200">
+            <nav className="flex">
+              <button
+                onClick={() => setActiveTab("users")}
+                className={`px-6 py-4 text-sm font-medium ${
+                  activeTab === "users"
+                    ? "border-b-2 border-blue-500 text-blue-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                User Management
+              </button>
+              <button
+                onClick={() => setActiveTab("system")}
+                className={`px-6 py-4 text-sm font-medium ${
+                  activeTab === "system"
+                    ? "border-b-2 border-blue-500 text-blue-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                System Overview
+              </button>
+            </nav>
+          </div>
+
+          <div className="p-6">
+            {activeTab === "users" && (
+              <>
+                {/* SEARCH & CREATE USER */}
+                <div className="flex flex-col lg:flex-row gap-6 mb-6">
+                  <div className="flex-1">
+                    <input
+                      placeholder="Search users by name or email..."
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <input
+                        placeholder="First Name"
+                        value={form.first_name}
+                        onChange={e => setForm({ ...form, first_name: e.target.value })}
+                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                      <input
+                        placeholder="Last Name"
+                        value={form.last_name}
+                        onChange={e => setForm({ ...form, last_name: e.target.value })}
+                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                      <input
+                        placeholder="Email"
+                        type="email"
+                        value={form.email}
+                        onChange={e => setForm({ ...form, email: e.target.value })}
+                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                      <input
+                        placeholder="Password"
+                        type="password"
+                        value={form.password}
+                        onChange={e => setForm({ ...form, password: e.target.value })}
+                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+
+                      <select
+                        value={form.role}
+                        onChange={e => setForm({ ...form, role: e.target.value, course_id: "" })}
+                        className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {ROLES.map(r => (
+                          <option key={r} value={r}>
+                            {r.charAt(0).toUpperCase() + r.slice(1).replace("_", " ")}
+                          </option>
+                        ))}
+                      </select>
+
+                      {form.role === "student" && courses.length > 0 && (
+                        <select
+                          value={form.course_id}
+                          onChange={e => setForm({ ...form, course_id: e.target.value })}
+                          className="border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          required
+                        >
+                          <option value="">Select Course</option>
+                          {courses.map(c => (
+                            <option key={c.course_id} value={c.course_id}>{c.course_name}</option>
+                          ))}
+                        </select>
+                      )}
+
+                      <button
+                        type="submit"
+                        className="md:col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow transition duration-200"
+                      >
+                        Create User
+                      </button>
+                    </form>
+                  </div>
                 </div>
-              )}
-              {profileSuccess && (
-                <div className="mb-4 rounded-lg bg-green-50 border border-green-200 text-green-800 px-4 py-3">
-                  {profileSuccess}
+
+                {/* USERS TABLE */}
+                <div className="overflow-x-auto bg-gray-50 rounded-lg">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Role</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {users.map(u => (
+                        <tr key={u.id} className="hover:bg-gray-50 transition duration-150">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {[u.first_name, u.middle_name, u.last_name].filter(Boolean).join(" ")}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">{u.email}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              u.role === "admin" ? "bg-red-100 text-red-800" :
+                              u.role === "student" ? "bg-green-100 text-green-800" :
+                              "bg-blue-100 text-blue-800"
+                            }`}>
+                              {u.role.charAt(0).toUpperCase() + u.role.slice(1).replace("_", " ")}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                            {role === "admin" && (
+                              <>
+                                <button
+                                  onClick={() => handleEditUser(u)}
+                                  className="text-indigo-600 hover:text-indigo-900 transition duration-150"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => setResetUser(u)}
+                                  className="text-yellow-600 hover:text-yellow-900 transition duration-150"
+                                >
+                                  Reset
+                                </button>
+                                {u.role !== "admin" && (
+                                  <button
+                                    onClick={() => handleDeleteUser(u.id)}
+                                    className="text-red-600 hover:text-red-900 transition duration-150"
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
 
-              <form className="space-y-4" onSubmit={handleProfileUpdate}>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">Name</label>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-400 focus:outline-none"
-                    value={profileForm.name}
-                    onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                    required
-                    placeholder="Full name"
-                  />
+                {/* PAGINATION */}
+                {pages > 1 && (
+                  <div className="flex justify-center mt-6">
+                    <nav className="flex items-center space-x-1">
+                      {[...Array(pages)].map((_, i) => (
+                        <button
+                          key={`page-${i}`}
+                          onClick={() => fetchUsers(i + 1)}
+                          className={`px-3 py-2 rounded-md text-sm font-medium ${
+                            page === i + 1
+                              ? "bg-blue-600 text-white"
+                              : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
+                          } transition duration-150`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </nav>
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeTab === "system" && (
+              <div className="space-y-6">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">System Overview</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Quick Actions */}
+                  <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+                    <h4 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h4>
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => navigate("/admin/settings")}
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+                      >
+                        System Settings
+                      </button>
+                      <button
+                        onClick={() => navigate("/registrar/courses")}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+                      >
+                        Manage Courses
+                      </button>
+                      <button
+                        onClick={() => navigate("/registrar/students")}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+                      >
+                        Manage Students
+                      </button>
+                      <button
+                        onClick={() => navigate("/exam-officer")}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200"
+                      >
+                        Exam Officer Panel
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* System Status */}
+                  <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+                    <h4 className="text-lg font-medium text-gray-900 mb-4">System Status</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Database:</span>
+                        <span className="text-green-600 font-medium">Connected</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">API Status:</span>
+                        <span className="text-green-600 font-medium">Online</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Last Backup:</span>
+                        <span className="text-gray-500">2 hours ago</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recent Activity */}
+                  <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
+                    <h4 className="text-lg font-medium text-gray-900 mb-4">Recent Activity</h4>
+                    <div className="space-y-2 text-sm text-gray-600">
+                      <div>• New student registered</div>
+                      <div>• Course updated</div>
+                      <div>• Exam marks entered</div>
+                      <div>• User password reset</div>
+                    </div>
+                  </div>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">Email</label>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-400 focus:outline-none"
-                    value={profileForm.email}
-                    onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                    required
-                    type="email"
-                    placeholder="user@example.com"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">Current password</label>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-400 focus:outline-none"
-                    value={profileForm.currentPassword}
-                    onChange={(e) => setProfileForm({ ...profileForm, currentPassword: e.target.value })}
-                    type="password"
-                    placeholder="Leave blank to keep current password"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700">New password</label>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-400 focus:outline-none"
-                    value={profileForm.newPassword}
-                    onChange={(e) => setProfileForm({ ...profileForm, newPassword: e.target.value })}
-                    type="password"
-                    placeholder="Leave blank to keep current password"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={profileLoading}
-                  className="w-full rounded-xl bg-blue-600 px-4 py-3 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
-                >
-                  {profileLoading ? "Saving…" : "Save changes"}
-                </button>
-              </form>
-            </section>          </div>
-            <section className="bg-white rounded-3xl shadow-lg p-8">
-              <h2 className="text-xl font-semibold text-slate-800 mb-4">Create new account</h2>
-
-            {error && (
-              <div className="mb-4 rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3">
-                {error}
               </div>
             )}
-            {success && (
-              <div className="mb-4 rounded-lg bg-green-50 border border-green-200 text-green-800 px-4 py-3">
-                {success}
-              </div>
-            )}
+          </div>
+        </div>
+      </div>
 
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Name</label>
+      {/* EDIT MODAL */}
+      {editingUser && (
+        <Modal onClose={() => setEditingUser(null)}>
+          <div className="p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Edit User</h2>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-400 focus:outline-none"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  value={editForm.first_name}
+                  onChange={e => setEditForm({ ...editForm, first_name: e.target.value })}
+                  className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="First Name"
                   required
-                  placeholder="Full name"
+                />
+                <input
+                  value={editForm.middle_name}
+                  onChange={e => setEditForm({ ...editForm, middle_name: e.target.value })}
+                  className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Middle Name"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Email</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-400 focus:outline-none"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  value={editForm.last_name}
+                  onChange={e => setEditForm({ ...editForm, last_name: e.target.value })}
+                  className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Last Name"
                   required
+                />
+                <input
+                  value={editForm.email}
+                  onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+                  className="border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Email"
                   type="email"
-                  placeholder="user@example.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Password</label>
-                <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-400 focus:outline-none"
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required
-                  type="password"
-                  placeholder="Password"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Role</label>
+              <select
+                value={editForm.role}
+                onChange={e => setEditForm({ ...editForm, role: e.target.value, course_id: "" })}
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {ROLES.map(r => (
+                  <option key={r} value={r}>
+                    {r.charAt(0).toUpperCase() + r.slice(1).replace("_", " ")}
+                  </option>
+                ))}
+              </select>
+
+              {editForm.role === "student" && courses.length > 0 && (
                 <select
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 focus:border-blue-400 focus:outline-none"
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                  value={editForm.course_id}
+                  onChange={e => setEditForm({ ...editForm, course_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {role.charAt(0).toUpperCase() + role.slice(1)}
-                    </option>
+                  <option value="">Select Course</option>
+                  {courses.map(c => (
+                    <option key={c.course_id} value={c.course_id}>{c.course_name}</option>
                   ))}
                 </select>
-              </div>
+              )}
 
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full rounded-xl bg-blue-600 px-4 py-3 text-white font-semibold hover:bg-blue-700 disabled:opacity-60"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow transition duration-200"
               >
-                {loading ? "Creating…" : "Create account"}
+                Save Changes
               </button>
             </form>
-          </section>
+          </div>
+        </Modal>
+      )}
 
-          <section className="bg-white rounded-3xl shadow-lg p-8">
-            <h2 className="text-xl font-semibold text-slate-800 mb-4">Existing users</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left border-collapse">
-                <thead>
-                  <tr className="text-sm text-slate-500 border-b">
-                    <th className="py-3 min-w-[180px]">Name</th>
-                    <th className="py-3 min-w-[240px]">Email</th>
-                    <th className="py-3 min-w-[120px]">Role</th>
-                    <th className="py-3 min-w-[220px]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id} className="border-b last:border-b-0">
-                      <td className="py-3 text-sm text-slate-700 min-w-[180px]">{user.name}</td>
-                      <td className="py-3 text-sm text-slate-700 min-w-[240px]">{user.email}</td>
-                      <td className="py-3 text-sm text-slate-700 min-w-[120px]">{user.role}</td>
-                      <td className="py-3 text-sm text-slate-700 min-w-[220px]">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                        <button
-                          type="button"
-                          className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
-                          onClick={() => handleResetPassword(user.id)}
-                        >
-                          Reset password
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-full bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700"
-                          onClick={() => handleDeleteUser(user.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
+      {/* RESET PASSWORD MODAL */}
+      {resetUser && (
+        <Modal onClose={() => setResetUser(null)}>
+          <div className="p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Reset Password</h2>
+            <p className="text-gray-600 mb-4">
+              Reset password for: <span className="font-medium">{[resetUser.first_name, resetUser.middle_name, resetUser.last_name].filter(Boolean).join(" ")}</span>
+            </p>
+            <input
+              type="password"
+              placeholder="New password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+            />
+            <button
+              onClick={handleResetPassword}
+              className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-3 px-6 rounded-lg shadow transition duration-200"
+            >
+              Update Password
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+/** ---------------- COMPONENTS ---------------- */
+const StatCard = ({ title, value, icon, color }) => {
+  const colorClasses = {
+    blue: "bg-blue-500",
+    green: "bg-green-500",
+    purple: "bg-purple-500",
+    yellow: "bg-yellow-500",
+    pink: "bg-pink-500",
+    indigo: "bg-indigo-500"
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6 flex items-center space-x-4 hover:shadow-xl transition duration-300">
+      <div className={`${colorClasses[color]} text-white p-3 rounded-lg text-2xl`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-gray-600 text-sm font-medium">{title}</p>
+        <h2 className="text-3xl font-bold text-gray-900">{value || 0}</h2>
       </div>
     </div>
   );
 };
+
+const Modal = ({ children, onClose }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md relative max-h-[90vh] overflow-y-auto">
+      {children}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
+      >
+        ×
+      </button>
+    </div>
+  </div>
+);
 
 export default AdminDashboard;

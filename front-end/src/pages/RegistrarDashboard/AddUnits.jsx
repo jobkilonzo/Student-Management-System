@@ -1,16 +1,18 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { makeRequest } from "../../../axios";
 
 const AddUnits = () => {
   const { courseId } = useParams();
+  const navigate = useNavigate();
+
   const [course, setCourse] = useState({});
-  const [unitForm, setUnitForm] = useState({ code: "", name: "" });
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Form state
+  const [form, setForm] = useState({ code: "", name: "", module: "" });
   const [editingUnitId, setEditingUnitId] = useState(null);
-  const [editForm, setEditForm] = useState({ code: "", name: "" });
 
   // =============================
   // FETCH COURSE DETAILS
@@ -28,7 +30,7 @@ const AddUnits = () => {
   }, [courseId]);
 
   // =============================
-  // FETCH UNITS FOR COURSE
+  // FETCH UNITS
   // =============================
   useEffect(() => {
     const fetchUnits = async () => {
@@ -43,55 +45,65 @@ const AddUnits = () => {
     fetchUnits();
   }, [courseId]);
 
+  // =============================
+  // HANDLE FORM CHANGE
+  // =============================
   const handleChange = (e) =>
-    setUnitForm({ ...unitForm, [e.target.name]: e.target.value });
+    setForm({ ...form, [e.target.name]: e.target.value });
 
   // =============================
-  // ADD UNIT
+  // ADD OR EDIT UNIT
   // =============================
-  const handleAddUnit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const res = await makeRequest.post("registrar/units/create", {
-        ...unitForm,
-        course_id: courseId,
-      });
+      if (editingUnitId) {
+        // EDIT
+        const res = await makeRequest.put(`registrar/units/${editingUnitId}`, {
+          unit_code: form.code,
+          unit_name: form.name,
+          module: form.module,
+          course_id: courseId,
+          course_code: course.course_code || course.code,
+        });
 
-      setUnits([...units, res.data]);
-      setUnitForm({ code: "", name: "" });
+        setUnits(units.map((u) => (u.unit_id === editingUnitId ? res.data : u)));
+        setEditingUnitId(null);
+      } else {
+        // ADD
+        const res = await makeRequest.post("registrar/units/create", {
+          unit_code: form.code,
+          unit_name: form.name,
+          module: form.module,
+          course_id: courseId,
+          course_code: course.course_code || course.code,
+        });
+
+        setUnits([...units, res.data]);
+      }
+
+      setForm({ code: "", name: "", module: "" });
     } catch (err) {
-      console.error("Error adding unit:", err);
-      alert("Failed to add unit");
+      console.error("Error saving unit:", err);
+      alert("Failed to save unit. Check console for details.");
     } finally {
       setLoading(false);
     }
   };
 
   // =============================
-  // EDIT UNIT
+  // EDIT / CANCEL
   // =============================
   const handleEdit = (unit) => {
-    setEditingUnitId(unit.id);
-    setEditForm({ code: unit.code, name: unit.name });
+    setEditingUnitId(unit.unit_id);
+    setForm({ code: unit.unit_code, name: unit.unit_name, module: unit.module || "" });
   };
-
-  const handleEditChange = (e) =>
-    setEditForm({ ...editForm, [e.target.name]: e.target.value });
-
-  const handleSaveEdit = async (id) => {
-    try {
-      const res = await makeRequest.put(`registrar/units/${id}`, editForm);
-      setUnits(units.map((u) => (u.id === id ? res.data : u)));
-      setEditingUnitId(null);
-    } catch (err) {
-      console.error("Error updating unit:", err);
-      alert("Failed to update unit");
-    }
+  const handleCancelEdit = () => {
+    setEditingUnitId(null);
+    setForm({ code: "", name: "", module: "" });
   };
-
-  const handleCancelEdit = () => setEditingUnitId(null);
 
   // =============================
   // DELETE UNIT
@@ -100,28 +112,44 @@ const AddUnits = () => {
     if (!window.confirm("Are you sure you want to delete this unit?")) return;
 
     try {
+      setLoading(true);
       await makeRequest.delete(`registrar/units/${id}`);
-      setUnits(units.filter((u) => u.id !== id));
+      setUnits(units.filter((u) => u.unit_id !== id));
     } catch (err) {
       console.error("Error deleting unit:", err);
       alert("Failed to delete unit");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // =============================
+  // BACK BUTTON
+  // =============================
+  const handleBack = () => navigate(-1);
+
   return (
     <div className="min-h-screen bg-slate-100 p-8 flex flex-col">
+      {/* Back Button */}
+      <button
+        onClick={handleBack}
+        className="bg-gray-500 text-white px-4 py-2 rounded mb-4 hover:bg-gray-600 transition"
+      >
+        &larr; Back
+      </button>
+
       <h1 className="text-3xl font-bold mb-6">
         Units for {course.course_name || course.name} ({course.course_code || course.code})
       </h1>
 
-      {/* Unit Form */}
+      {/* Unit Form (Add/Edit) */}
       <form
-        onSubmit={handleAddUnit}
-        className="bg-white p-6 rounded-xl shadow grid grid-cols-1 md:grid-cols-3 gap-4 mb-8"
+        onSubmit={handleSubmit}
+        className="bg-white p-6 rounded-xl shadow grid grid-cols-1 md:grid-cols-4 gap-4 mb-8"
       >
         <input
           name="code"
-          value={unitForm.code}
+          value={form.code}
           onChange={handleChange}
           placeholder="Unit Code (e.g., BIT101)"
           required
@@ -130,20 +158,40 @@ const AddUnits = () => {
         />
         <input
           name="name"
-          value={unitForm.name}
+          value={form.name}
           onChange={handleChange}
           placeholder="Unit Name"
           required
           className="border p-2 rounded"
           disabled={loading}
         />
-        <button
-          type="submit"
+        <input
+          name="module"
+          value={form.module}
+          onChange={handleChange}
+          placeholder="E.g Module 1"
+          className="border p-2 rounded"
           disabled={loading}
-          className="bg-blue-600 text-white rounded p-2 col-span-full hover:bg-blue-700 transition"
-        >
-          {loading ? "Adding..." : "Add Unit"}
-        </button>
+        />
+        <div className="col-span-full flex gap-2">
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-blue-600 text-white rounded p-2 flex-1 hover:bg-blue-700 transition"
+          >
+            {loading ? "Saving..." : editingUnitId ? "Save Changes" : "Add Unit"}
+          </button>
+          {editingUnitId && (
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              disabled={loading}
+              className="bg-gray-500 text-white rounded p-2 flex-1 hover:bg-gray-600 transition"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
 
       {/* Units Table */}
@@ -153,75 +201,42 @@ const AddUnits = () => {
             <tr>
               <th className="px-4 py-3">Unit Code</th>
               <th className="px-4 py-3">Unit Name</th>
+              <th className="px-4 py-3">Module</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {units.length === 0 ? (
               <tr>
-                <td colSpan={3} className="text-center py-6 text-gray-500">
+                <td colSpan={4} className="text-center py-6 text-gray-500">
                   No units added yet.
                 </td>
               </tr>
             ) : (
               units.map((u) => (
                 <tr
-                  key={u.id}
+                  key={u.unit_id}
                   className="border-t hover:bg-blue-50 transition rounded-md"
                 >
-                  {editingUnitId === u.id ? (
-                    <>
-                      <td className="px-4 py-2">
-                        <input
-                          name="code"
-                          value={editForm.code}
-                          onChange={handleEditChange}
-                          className="border p-1 rounded w-full"
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input
-                          name="name"
-                          value={editForm.name}
-                          onChange={handleEditChange}
-                          className="border p-1 rounded w-full"
-                        />
-                      </td>
-                      <td className="px-4 py-2 flex gap-2 justify-center">
-                        <button
-                          onClick={() => handleSaveEdit(u.id)}
-                          className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 transition"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={handleCancelEdit}
-                          className="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600 transition"
-                        >
-                          Cancel
-                        </button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="px-4 py-2">{u.code}</td>
-                      <td className="px-4 py-2">{u.name}</td>
-                      <td className="px-4 py-2 flex gap-2 justify-center">
-                        <button
-                          onClick={() => handleEdit(u)}
-                          className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 transition"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(u.id)}
-                          className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </>
-                  )}
+                  <td className="px-4 py-2">{u.unit_code}</td>
+                  <td className="px-4 py-2">{u.unit_name}</td>
+                  <td className="px-4 py-2">{u.module || "-"}</td>
+                  <td className="px-4 py-2 flex gap-2 justify-center">
+                    <button
+                      onClick={() => handleEdit(u)}
+                      disabled={loading}
+                      className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 transition"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(u.unit_id)}
+                      disabled={loading}
+                      className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition"
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))
             )}

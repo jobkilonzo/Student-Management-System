@@ -5,11 +5,12 @@ import {
   getStudentById,
   updateStudent,
   deleteStudent,
+  importStudentsExcel,
 } from "../../controller/registrar/controller.students.js";
+import { authenticateToken, authorizeRoles } from "../../middleware/auth.js";
 
 import multer from "multer";
 const router = Router();
-
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -28,14 +29,18 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// All routes require authentication and registrar/admin role
+router.use(authenticateToken);
+router.use(authorizeRoles("registrar", "admin"));
+
 // Use upload.single("photo") for photo field
 router.post("/create", upload.single("photo"), addStudent);
 router.get("/", getStudents);
 router.get("/:id", getStudentById);
-router.put("/:id", updateStudent);
+router.put("/:id", upload.single("photo"), updateStudent);
 router.delete("/:id", deleteStudent);
 
 // Bulk import
-// router.post("/import", importStudentsExcel); // upload.single("file"),
+router.post("/import", upload.single("file"), importStudentsExcel);
 
 export default router;

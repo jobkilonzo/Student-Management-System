@@ -1,26 +1,27 @@
-import { useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
 const getStoredRole = () => {
   return localStorage.getItem("sms_role");
 };
 
+const getToken = () => {
+  return localStorage.getItem("sms_token");
+};
+
 const ProtectedRoute = ({ allowedRoles = [], children }) => {
-  const navigate = useNavigate();
   const location = useLocation();
+  const role = getStoredRole();
+  const token = getToken();
 
-  useEffect(() => {
-    const role = getStoredRole();
+  // Not logged in
+  if (!token || !role) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
 
-    if (!role) {
-      navigate("/login", { replace: true, state: { from: location } });
-      return;
-    }
-
-    if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
-      navigate("/login", { replace: true });
-    }
-  }, [allowedRoles, location, navigate]);
+  // Role not allowed
+  if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+    return <Navigate to="/login" replace />;
+  }
 
   return children;
 };

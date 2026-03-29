@@ -5,7 +5,7 @@ import { makeRequest } from "../../../axios";
 const RegistrarCourses = () => {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
-  const [courseForm, setCourseForm] = useState({ code: "", name: "" });
+  const [courseForm, setCourseForm] = useState({ course_code: "", course_name: "" });
   const [editingCourseId, setEditingCourseId] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -21,10 +21,12 @@ const RegistrarCourses = () => {
         console.error("Fetch Courses Error:", err);
       }
     };
-
     fetchCourses();
   }, []);
 
+  // =============================
+  // HANDLE INPUT CHANGE
+  // =============================
   const handleChange = (e) =>
     setCourseForm({ ...courseForm, [e.target.name]: e.target.value });
 
@@ -36,33 +38,30 @@ const RegistrarCourses = () => {
     setLoading(true);
 
     try {
+      let response;
       if (editingCourseId) {
         // EDIT course
-        const res = await makeRequest.put(
-          `/registrar/courses/${editingCourseId}`,
-          courseForm
-        );
-        setCourses(
-          courses.map((c) =>
-            c.id === editingCourseId ? { ...c, ...res.data } : c
-          )
-        );
+        response = await makeRequest.put(`/registrar/courses/${editingCourseId}`, courseForm);
+        const fetchRes = await makeRequest.get("/registrar/courses");
+        setCourses(fetchRes.data);
         setEditingCourseId(null);
       } else {
         // CREATE course
-        const res = await makeRequest.post(
-          "/registrar/courses/create",
-          courseForm
-        );
-        setCourses([...courses, res.data]);
-        // Redirect to add units
-        navigate(`/registrar/courses/${res.data.id}/units`);
+        response = await makeRequest.post("/registrar/courses/create", courseForm);
+        setCourses([...courses, response.data]);
+        navigate(`/registrar/courses/${response.data.course_id}/units`);
       }
 
-      setCourseForm({ code: "", name: "" });
+      // Reset form
+      setCourseForm({ course_code: "", course_name: "" });
     } catch (err) {
-      console.error(err);
-      alert("Error saving course");
+      if (err.response) {
+        console.error("Server responded with error:", err.response.data);
+        alert(`Error: ${err.response.data.message || "Bad Request"}`);
+      } else {
+        console.error("Network or client error:", err);
+        alert("Network or client error. Check console for details.");
+      }
     } finally {
       setLoading(false);
     }
@@ -72,8 +71,8 @@ const RegistrarCourses = () => {
   // SET FORM FOR EDITING
   // =============================
   const handleEdit = (course) => {
-    setCourseForm({ code: course.code, name: course.name });
-    setEditingCourseId(course.id);
+    setCourseForm({ course_code: course.course_code, course_name: course.course_name });
+    setEditingCourseId(course.course_id);
   };
 
   // =============================
@@ -83,11 +82,26 @@ const RegistrarCourses = () => {
     navigate(`/registrar/courses/${courseId}/units`);
   };
 
+  // =============================
+  // BACK BUTTON
+  // =============================
+  const handleBack = () => navigate(-1); // go back to previous page
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-indigo-100 p-6">
       <h1 className="text-4xl font-extrabold text-center text-slate-800 mb-8">
         Registrar Courses
       </h1>
+
+      {/* BACK BUTTON */}
+      <div className="max-w-2xl mx-auto mb-4">
+        <button
+          onClick={handleBack}
+          className="bg-gray-500 hover:bg-gray-600 text-white font-semibold px-4 py-2 rounded"
+        >
+          &larr; Back
+        </button>
+      </div>
 
       {/* FORM */}
       <div className="bg-white w-full max-w-2xl mx-auto p-8 rounded-2xl shadow-lg mb-10">
@@ -100,8 +114,8 @@ const RegistrarCourses = () => {
           className="grid grid-cols-1 md:grid-cols-2 gap-6"
         >
           <input
-            name="code"
-            value={courseForm.code}
+            name="course_code"
+            value={courseForm.course_code}
             onChange={handleChange}
             placeholder="Course Code (e.g., BIT)"
             required
@@ -109,8 +123,8 @@ const RegistrarCourses = () => {
           />
 
           <input
-            name="name"
-            value={courseForm.name}
+            name="course_name"
+            value={courseForm.course_name}
             onChange={handleChange}
             placeholder="Course Name"
             required
@@ -151,9 +165,9 @@ const RegistrarCourses = () => {
               </tr>
             )}
             {courses.map((c) => (
-              <tr key={c.id} className="text-center border-t">
-                <td className="border px-4 py-2">{c.code}</td>
-                <td className="border px-4 py-2">{c.name}</td>
+              <tr key={c.course_id} className="text-center border-t">
+                <td className="border px-4 py-2">{c.course_code}</td>
+                <td className="border px-4 py-2">{c.course_name}</td>
                 <td className="border px-4 py-2 flex justify-center gap-2">
                   <button
                     onClick={() => handleEdit(c)}
@@ -162,7 +176,7 @@ const RegistrarCourses = () => {
                     Edit
                   </button>
                   <button
-                    onClick={() => handleAddUnits(c.id)}
+                    onClick={() => handleAddUnits(c.course_id)}
                     className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-white"
                   >
                     Add Units
