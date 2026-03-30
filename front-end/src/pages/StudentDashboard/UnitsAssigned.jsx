@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { makeRequest } from "../../../axios";
+import StudentPortalLayout from "./StudentPortalLayout";
 
 const UnitsAssigned = () => {
-  const navigate = useNavigate();
   const [units, setUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -25,27 +24,12 @@ const UnitsAssigned = () => {
     }
   };
 
-  const handleBack = () => {
-    navigate("/student/dashboard");
-  };
-
   return (
-    <div className="min-h-screen bg-slate-100 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg transition mb-4"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-            </svg>
-            Back to Dashboard
-          </button>
-          <h1 className="text-3xl font-bold text-gray-800">Units Assigned</h1>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+    <StudentPortalLayout
+      title="Assigned Units"
+      subtitle="View the academic units attached to your course and track the subjects you are expected to complete."
+    >
+      <div className="space-y-5">
           {loading ? (
             <div className="flex justify-center items-center py-8">
               <p className="text-gray-500">Loading units...</p>
@@ -59,30 +43,46 @@ const UnitsAssigned = () => {
               <p className="text-gray-500">No units assigned yet.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead className="bg-gray-100">
+            <>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl bg-slate-50 p-5">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Total Units</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">{units.length}</p>
+                </div>
+                <div className="rounded-2xl bg-blue-50 p-5">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600">Primary Course</p>
+                  <p className="mt-2 text-lg font-bold text-slate-900">{units[0]?.course_name || "Not available"}</p>
+                </div>
+                <div className="rounded-2xl bg-indigo-50 p-5">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-600">Course Code</p>
+                  <p className="mt-2 text-lg font-bold text-slate-900">{units[0]?.course_code || "-"}</p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-slate-50">
+                <table className="w-full border-collapse">
+                  <thead className="bg-slate-100/90">
                   <tr>
-                    <th className="p-3 text-left">Unit Code</th>
-                    <th className="p-3 text-left">Unit Name</th>
-                    <th className="p-3 text-left">Course</th>
+                    <th className="p-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Unit Code</th>
+                    <th className="p-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Unit Name</th>
+                    <th className="p-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Course</th>
                   </tr>
                 </thead>
                 <tbody>
                   {units.map((unit) => (
-                    <tr key={unit.unit_id} className="border-b hover:bg-blue-50 transition">
-                      <td className="p-3 font-semibold text-blue-600">{unit.unit_code}</td>
-                      <td className="p-3">{unit.unit_name}</td>
-                      <td className="p-3">{unit.course_name} ({unit.course_code})</td>
+                    <tr key={unit.unit_id} className="border-b border-slate-200 bg-white transition hover:bg-blue-50/60">
+                      <td className="p-4 font-semibold text-blue-700">{unit.unit_code}</td>
+                      <td className="p-4 text-slate-700">{unit.unit_name}</td>
+                      <td className="p-4 text-slate-600">{unit.course_name} ({unit.course_code})</td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+            </>
           )}
-        </div>
       </div>
-    </div>
+    </StudentPortalLayout>
   );
 };
 

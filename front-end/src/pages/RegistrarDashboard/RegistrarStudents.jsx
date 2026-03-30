@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom"; // Add this import
 import { makeRequest } from "../../../axios";
+import RegistrarPageShell from "./RegistrarPageShell";
 
 const courseModules = {
   Craft: {
@@ -24,8 +25,11 @@ const RegistrarStudents = () => {
   const [search, setSearch] = useState("");
   const [availableTerms, setAvailableTerms] = useState([]);
   const [editingStudentId, setEditingStudentId] = useState(null);
+  const [formMode, setFormMode] = useState("create");
+  const [transitionContext, setTransitionContext] = useState(null);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [skipNextTermReset, setSkipNextTermReset] = useState(false);
 
   const [studentForm, setStudentForm] = useState({
     first_name: "",
@@ -95,9 +99,14 @@ const RegistrarStudents = () => {
       setAvailableTerms(courseModules[courseLevel][studentForm.module] || []);
     } else setAvailableTerms([]);
 
-    // Reset term if module changes
+    if (skipNextTermReset) {
+      setSkipNextTermReset(false);
+      return;
+    }
+
+    // Reset term only for user-driven course/module changes
     setStudentForm((prev) => ({ ...prev, term: "" }));
-  }, [studentForm.course_id, studentForm.module, courses]);
+  }, [studentForm.course_id, studentForm.module, courses, skipNextTermReset]);
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -121,6 +130,11 @@ const RegistrarStudents = () => {
     setLoading(true);
 
     try {
+      if (!editingStudentId) {
+        alert("Select a student from the list to edit or transition.");
+        return;
+      }
+
       const formData = new FormData();
       Object.keys(studentForm).forEach((key) => {
         if (studentForm[key] !== null && studentForm[key] !== "") {
@@ -133,7 +147,7 @@ const RegistrarStudents = () => {
         await makeRequest.put(`/registrar/students/${editingStudentId}`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-        alert("Student updated successfully!");
+        alert(formMode === "transition" ? "Student transitioned successfully!" : "Student updated successfully!");
       }
 
       // Reset form
@@ -155,6 +169,9 @@ const RegistrarStudents = () => {
 
   const handleEdit = (student) => {
     setEditingStudentId(student.id);
+    setFormMode("edit");
+    setTransitionContext(null);
+    setSkipNextTermReset(true);
     setStudentForm({
       first_name: student.first_name || "",
       middle_name: student.middle_name || "",
@@ -179,6 +196,40 @@ const RegistrarStudents = () => {
     
     // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleTransition = (student) => {
+    setEditingStudentId(student.id);
+    setFormMode("transition");
+    setSkipNextTermReset(true);
+    setTransitionContext({
+      student_name: `${student.first_name || ""} ${student.middle_name ? `${student.middle_name} ` : ""}${student.last_name || ""}`.trim(),
+      reg_no: student.reg_no || "-",
+      current_course_name: student.course_name || "",
+      current_course_code: student.course_code || "",
+      current_module: student.module || "",
+      current_term: student.term || "",
+    });
+    setStudentForm({
+      first_name: student.first_name || "",
+      middle_name: student.middle_name || "",
+      last_name: student.last_name || "",
+      gender: student.gender || "Male",
+      dob: student.dob ? student.dob.split('T')[0] : "",
+      id_number: student.id_number || "",
+      phone: student.phone || "",
+      email: student.email || "",
+      course_id: student.course_id || "",
+      module: student.module || "",
+      term: student.term || "",
+      address: student.address || "",
+      guardian_name: student.guardian_name || "",
+      guardian_phone: student.guardian_phone || "",
+      photo: null,
+    });
+    setPhotoPreview(null);
+    setSelectedPhoto(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDelete = async (studentId) => {
@@ -215,6 +266,8 @@ const RegistrarStudents = () => {
       photo: null,
     });
     setEditingStudentId(null);
+    setFormMode("create");
+    setTransitionContext(null);
     setSelectedPhoto(null);
     setPhotoPreview(null);
   };
@@ -237,32 +290,56 @@ const RegistrarStudents = () => {
   });
 
   return (
-    <div className="p-6 min-h-screen bg-slate-100">
-      {/* Header with Back Button */}
-      <div className="mb-8">
-        <div className="flex items-center gap-4 mb-4">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg transition"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-            </svg>
-            Back
-          </button>
-          <h1 className="text-3xl font-bold text-gray-800">Register Students</h1>
+    <RegistrarPageShell
+      title={formMode === "transition" ? "Transition Student" : editingStudentId ? "Edit Student" : "Student Registry"}
+      subtitle={
+        formMode === "transition"
+          ? "Move the selected learner to a new academic stage while preserving billing history and prior level records."
+          : editingStudentId
+          ? "Review the selected student, update core details, and keep the academic record current."
+          : "Search the registrar record, open a student profile for editing, or transition a learner to the next course level."
+      }
+      actions={
+        <div className="flex flex-wrap gap-3">
+          <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
+            Total students: {students.length}
+          </div>
+          <div className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-sky-100">
+            Actions: Edit, Transition, Delete
+          </div>
         </div>
-        <p className="text-gray-600 mt-2">
-          {editingStudentId ? "Edit student information" : "Add new students and assign them to courses."}
-        </p>
-      </div>
+      }
+    >
+      {editingStudentId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+        <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[32px] border border-sky-100 bg-white p-7 shadow-[0_30px_80px_-36px_rgba(15,23,42,0.45)]">
+          <div className="mb-6 flex flex-col gap-3 border-b border-sky-100 pb-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
+              Student Workspace
+            </p>
+            <h2 className="text-2xl font-semibold text-slate-900">
+            {formMode === "transition" ? "Transition Student" : editingStudentId ? "Edit Student" : "Student Actions"}
+            </h2>
+            <p className="text-sm leading-6 text-slate-600">
+              Changing course, module, or term archives the previous level automatically and keeps any unpaid fee balance in billing.
+            </p>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Registration Form */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <h2 className="text-xl font-semibold mb-6">
-            {editingStudentId ? "Edit Student" : "Add New Student"}
-          </h2>
+          {formMode === "transition" && transitionContext && (
+            <div className="mb-6 rounded-[24px] border border-sky-200 bg-gradient-to-br from-sky-50 to-cyan-50 p-5">
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-sky-700">Transition Summary</p>
+              <p className="mt-2 text-lg font-bold text-slate-900">
+                {transitionContext.student_name} <span className="text-sm font-medium text-slate-500">({transitionContext.reg_no})</span>
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                Current stage: {transitionContext.current_course_name || "-"}
+                {transitionContext.current_course_code ? ` (${transitionContext.current_course_code})` : ""} | Module {transitionContext.current_module || "-"} | {transitionContext.current_term || "-"}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                Update the course, module, or term below to move this student to the next level. Previous billing will be archived automatically.
+              </p>
+            </div>
+          )}
           
           {/* Photo Preview */}
           {photoPreview && (
@@ -271,7 +348,7 @@ const RegistrarStudents = () => {
                 <img 
                   src={photoPreview} 
                   alt="Preview" 
-                  className="w-32 h-32 object-cover rounded-full border-4 border-blue-200"
+                  className="h-32 w-32 rounded-full border-4 border-sky-200 object-cover shadow-md"
                 />
                 <button
                   type="button"
@@ -288,101 +365,105 @@ const RegistrarStudents = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Names */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                type="text"
-                name="first_name"
-                value={studentForm.first_name}
-                onChange={handleChange}
-                placeholder="First Name"
-                required
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-              <input
-                type="text"
-                name="middle_name"
-                value={studentForm.middle_name}
-                onChange={handleChange}
-                placeholder="Middle Name"
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-            </div>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {formMode !== "transition" && (
+              <>
+                {/* Names */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    name="first_name"
+                    value={studentForm.first_name}
+                    onChange={handleChange}
+                    placeholder="First Name"
+                    required
+                    className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  />
+                  <input
+                    type="text"
+                    name="middle_name"
+                    value={studentForm.middle_name}
+                    onChange={handleChange}
+                    placeholder="Middle Name"
+                    className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  />
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                type="text"
-                name="last_name"
-                value={studentForm.last_name}
-                onChange={handleChange}
-                placeholder="Last Name"
-                required
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-              <select
-                name="gender"
-                value={studentForm.gender}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              >
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-              </select>
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    name="last_name"
+                    value={studentForm.last_name}
+                    onChange={handleChange}
+                    placeholder="Last Name"
+                    required
+                    className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  />
+                  <select
+                    name="gender"
+                    value={studentForm.gender}
+                    onChange={handleChange}
+                    className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
 
-            {/* DOB & ID */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                type="date"
-                name="dob"
-                value={studentForm.dob}
-                onChange={handleChange}
-                required
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-              <input
-                type="text"
-                name="id_number"
-                value={studentForm.id_number}
-                onChange={handleChange}
-                placeholder="ID Number"
-                required
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-            </div>
+                {/* DOB & ID */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="date"
+                    name="dob"
+                    value={studentForm.dob}
+                    onChange={handleChange}
+                    required
+                    className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  />
+                  <input
+                    type="text"
+                    name="id_number"
+                    value={studentForm.id_number}
+                    onChange={handleChange}
+                    placeholder="ID Number"
+                    required
+                    className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  />
+                </div>
 
-            {/* Contact */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                type="tel"
-                name="phone"
-                value={studentForm.phone}
-                onChange={handleChange}
-                placeholder="Phone"
-                required
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-              <input
-                type="email"
-                name="email"
-                value={studentForm.email}
-                onChange={handleChange}
-                placeholder="Email"
-                required
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-            </div>
+                {/* Contact */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={studentForm.phone}
+                    onChange={handleChange}
+                    placeholder="Phone"
+                    required
+                    className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
+                  />
+                  <input
+                    type="email"
+                    name="email"
+                    value={studentForm.email}
+                    onChange={handleChange}
+                    placeholder="Email"
+                    required
+                    className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
+                  />
+                </div>
 
-            {/* Address */}
-            <input
-              type="text"
-              name="address"
-              value={studentForm.address}
-              onChange={handleChange}
-              placeholder="Address"
-              className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-            />
+                {/* Address */}
+                <input
+                  type="text"
+                  name="address"
+                  value={studentForm.address}
+                  onChange={handleChange}
+                  placeholder="Address"
+                  className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                />
+              </>
+            )}
 
             {/* Course Dropdown */}
             <select
@@ -390,7 +471,7 @@ const RegistrarStudents = () => {
               value={studentForm.course_id}
               onChange={handleChange}
               required
-              className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
+              className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
             >
               <option value="">Select Course</option>
               {courses.map((c) => (
@@ -408,7 +489,7 @@ const RegistrarStudents = () => {
                 onChange={handleChange}
                 required
                 disabled={!studentForm.course_id}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
+                className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
               >
                 <option value="">Select Module</option>
                 {studentForm.course_id &&
@@ -437,7 +518,7 @@ const RegistrarStudents = () => {
                 onChange={handleChange}
                 required
                 disabled={!studentForm.module || availableTerms.length === 0}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
+                className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
               >
                 <option value="">Select Term</option>
                 {availableTerms.map((t) => (
@@ -448,47 +529,48 @@ const RegistrarStudents = () => {
               </select>
             </div>
 
-            {/* Guardian & Photo */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <input
-                type="text"
-                name="guardian_name"
-                value={studentForm.guardian_name}
-                onChange={handleChange}
-                placeholder="Guardian Name"
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-              <input
-                type="tel"
-                name="guardian_phone"
-                value={studentForm.guardian_phone}
-                onChange={handleChange}
-                placeholder="Guardian Phone"
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-3 focus:border-blue-400 focus:outline-none"
-              />
-              <input
-                type="file"
-                name="photo"
-                accept="image/*"
-                onChange={handleChange}
-                className="mt-1 w-full rounded-xl border border-gray-300 px-4 py-2 focus:border-blue-400 focus:outline-none"
-              />
-            </div>
+            {formMode !== "transition" && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input
+                  type="text"
+                  name="guardian_name"
+                  value={studentForm.guardian_name}
+                  onChange={handleChange}
+                  placeholder="Guardian Name"
+                  className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                />
+                <input
+                  type="tel"
+                  name="guardian_phone"
+                  value={studentForm.guardian_phone}
+                  onChange={handleChange}
+                  placeholder="Guardian Phone"
+                  className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                />
+                <input
+                  type="file"
+                  name="photo"
+                  accept="image/*"
+                  onChange={handleChange}
+                  className="mt-1 w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-700 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                />
+              </div>
+            )}
 
             <div className="flex gap-3">
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 transition"
+                className="flex-1 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-500 px-4 py-3 font-semibold text-white shadow-lg transition hover:from-sky-700 hover:to-cyan-600 disabled:opacity-60"
               >
-                {loading ? "Saving…" : editingStudentId ? "Update Student" : "Register Student"}
+                {loading ? "Saving..." : formMode === "transition" ? "Transition Student" : "Update Student"}
               </button>
               
               {editingStudentId && (
                 <button
                   type="button"
                   onClick={handleCancelEdit}
-                  className="px-6 py-3 rounded-xl bg-gray-500 text-white font-semibold hover:bg-gray-600 transition"
+                  className="rounded-2xl bg-slate-700 px-6 py-3 font-semibold text-white transition hover:bg-slate-800"
                 >
                   Cancel
                 </button>
@@ -496,19 +578,34 @@ const RegistrarStudents = () => {
             </div>
           </form>
         </div>
+        </div>
+      )}
 
         {/* Students Table */}
-        <div className="bg-white p-6 rounded-xl shadow-md">
-          <h2 className="text-xl font-semibold mb-4">Registered Students</h2>
+        <div className="rounded-[32px] border border-sky-100 bg-white/95 p-7 shadow-[0_24px_50px_-38px_rgba(14,116,144,0.45)]">
+          <div className="mb-6 flex flex-col gap-3 border-b border-sky-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
+                Student Directory
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">Registered Students</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Search, review, and manage active student records from one table.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800">
+              Total students: {students.length}
+            </div>
+          </div>
 
           {/* Search Input */}
-          <div className="mb-4">
+          <div className="mb-5">
             <input
               type="text"
               placeholder="Search by name, email or registration number..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:border-blue-400 focus:outline-none"
+              className="w-full rounded-2xl border border-sky-100 bg-white px-4 py-3 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
             />
           </div>
 
@@ -521,9 +618,9 @@ const RegistrarStudents = () => {
               {error}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-[24px] border border-sky-100">
               <table className="w-full border-collapse">
-                <thead className="bg-gray-100">
+                <thead className="bg-gradient-to-r from-sky-100 to-cyan-50 text-sky-950">
                   <tr>
                     <th className="p-3 text-left">Reg No</th>
                     <th className="p-3 text-left">Name</th>
@@ -545,14 +642,19 @@ const RegistrarStudents = () => {
                     filteredStudents.map((s) => (
                       <tr
                         key={s.id}
-                        className="border-b hover:bg-blue-50 transition"
+                        className="border-b border-sky-100 transition hover:bg-sky-50/80"
                       >
-                        <td className="p-3 font-semibold text-blue-600">
+                        <td className="p-3 font-semibold text-sky-700">
                           {s.reg_no || "-"}
                         </td>
-                        <td className="p-3">{`${s.first_name || ""} ${
-                          s.middle_name ? s.middle_name + " " : ""
-                        }${s.last_name || ""}`}</td>
+                        <td className="p-3">
+                          <div>
+                            <p className="font-semibold text-slate-900">{`${s.first_name || ""} ${
+                              s.middle_name ? s.middle_name + " " : ""
+                            }${s.last_name || ""}`}</p>
+                            <p className="text-xs text-slate-500">{s.email || "No email"}</p>
+                          </div>
+                        </td>
                         <td className="p-3">
                           {s.course_name || "-"} ({s.course_code || "-"})
                         </td>
@@ -560,17 +662,24 @@ const RegistrarStudents = () => {
                         <td className="p-3">{s.term || "-"}</td>
                         <td className="p-3">{s.phone || "-"}</td>
                         <td className="p-3">
-                          <div className="flex justify-center gap-2">
+                          <div className="flex flex-wrap justify-center gap-2 whitespace-nowrap">
+                            <button
+                              onClick={() => handleTransition(s)}
+                              className="rounded-full bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-200"
+                              title="Transition student"
+                            >
+                              Move
+                            </button>
                             <button
                               onClick={() => handleEdit(s)}
-                              className="bg-yellow-400 hover:bg-yellow-500 text-white px-3 py-1 rounded text-sm font-medium transition"
-                              title="Edit student"
+                              className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-200"
+                              title="Edit student details"
                             >
                               Edit
                             </button>
                             <button
                               onClick={() => handleDelete(s.id)}
-                              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-medium transition"
+                              className="rounded-full bg-rose-100 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-200"
                               title="Delete student"
                             >
                               Delete
@@ -587,13 +696,12 @@ const RegistrarStudents = () => {
           
           {/* Student Count */}
           {!loadingStudents && !error && filteredStudents.length > 0 && (
-            <div className="mt-4 text-sm text-gray-500">
+            <div className="mt-4 text-sm text-slate-500">
               Showing {filteredStudents.length} of {students.length} students
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </RegistrarPageShell>
   );
 };
 

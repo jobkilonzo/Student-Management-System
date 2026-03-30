@@ -6,7 +6,7 @@ import Login from "./pages/Login";
 import ExamManagement from "./pages/ExamManagement";
 
 /** Admin */
-import AdminDashboard from "./pages/AdminDashboard/AdminDashboard";
+import AdminDashboard from "./pages/AdminDashboard/AdminDashboardV2";
 import SystemSettings from "./pages/AdminDashboard/SystemSettings";
 import UsersManagement from "./pages/AdminDashboard/UsersManagement";
 import CourseManagement from "./pages/AdminDashboard/CourseManagement";
@@ -14,11 +14,11 @@ import TranscriptLog from "./pages/AdminDashboard/TranscriptLog";
 import Notifications from "./pages/AdminDashboard/Notifications";
 
 /** Student */
-import StudentDashboard from "./pages/StudentDashboard/StudentDashboard";
-import UpdateDetails from "./pages/StudentDashboard/UpdateDetails";
+import StudentDashboardPro from "./pages/StudentDashboard/StudentDashboardPro";
+import UpdateDetailsPro from "./pages/StudentDashboard/UpdateDetailsPro";
 import UnitsAssigned from "./pages/StudentDashboard/UnitsAssigned";
 import FeeBalance from "./pages/StudentDashboard/FeeBalance";
-import Results from "./pages/StudentDashboard/Results";
+import ResultsPro from "./pages/StudentDashboard/ResultsPro";
 
 /** Exam Officer */
 import ExamOfficerDashboard from "./pages/ExamOfficer/ExamOfficerDashboard";
@@ -26,13 +26,16 @@ import ManageExams from "./pages/ExamOfficer/ManageExams";
 import ReviewMarks from "./pages/ExamOfficer/ReviewMarks";
 
 /** Accountant */
-import AccountantDashboard from "./pages/AccountantDashboard";
+import AccountantDashboard from "./pages/AccountantDashboard/AccountantDashboard";
+import StudentAccounts from "./pages/AccountantDashboard/StudentAccounts";
+import Collections from "./pages/AccountantDashboard/Collections";
+import AccountantReports from "./pages/AccountantDashboard/Reports";
 
 /** Tutor */
-import TutorDashboard from "./pages/Tutor/TutorDashboard";
+import TutorDashboard from "./pages/Tutor/TutorDashboardPro";
 import AssignmentsPage from "./pages/Tutor/AssignmentsPage";
-import AttendancePage from "./pages/Tutor/AttendancePage";
-import EnterMarksPage from "./pages/Tutor/EnterMarksPage";
+import AttendancePage from "./pages/Tutor/AttendancePagePro";
+import EnterMarksPage from "./pages/Tutor/EnterMarksPagePro";
 import ProgressReportsPage from "./pages/Tutor/ProgressReportsPage";
 
 /** Registrar */
@@ -76,11 +79,11 @@ function App() {
 
         {/* Student Routes */}
         <Route path="/student" element={<Navigate to="/student/dashboard" replace />} />
-        <Route path="/student/dashboard" element={<ProtectedRoute allowedRoles={["student"]}><StudentDashboard /></ProtectedRoute>} />
-        <Route path="/student/update-details" element={<ProtectedRoute allowedRoles={["student"]}><UpdateDetails /></ProtectedRoute>} />
+        <Route path="/student/dashboard" element={<ProtectedRoute allowedRoles={["student"]}><StudentDashboardPro /></ProtectedRoute>} />
+        <Route path="/student/update-details" element={<ProtectedRoute allowedRoles={["student"]}><UpdateDetailsPro /></ProtectedRoute>} />
         <Route path="/student/units" element={<ProtectedRoute allowedRoles={["student"]}><UnitsAssigned /></ProtectedRoute>} />
         <Route path="/student/fees" element={<ProtectedRoute allowedRoles={["student"]}><FeeBalance /></ProtectedRoute>} />
-        <Route path="/student/results" element={<ProtectedRoute allowedRoles={["student"]}><Results /></ProtectedRoute>} />
+        <Route path="/student/results" element={<ProtectedRoute allowedRoles={["student"]}><ResultsPro /></ProtectedRoute>} />
 
         {/* Exam Officer Routes */}
         <Route path="/exam-officer" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ExamOfficerDashboard /></ProtectedRoute>} />
@@ -88,7 +91,11 @@ function App() {
         <Route path="/exam-officer/review-marks" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ReviewMarks /></ProtectedRoute>} />
 
         {/* Accountant Routes */}
-        <Route path="/accountant" element={<ProtectedRoute allowedRoles={["accountant"]}><AccountantDashboard /></ProtectedRoute>} />
+        <Route path="/accountant" element={<Navigate to="/accountant/dashboard" replace />} />
+        <Route path="/accountant/dashboard" element={<ProtectedRoute allowedRoles={["accountant"]}><AccountantDashboard /></ProtectedRoute>} />
+        <Route path="/accountant/student-accounts" element={<ProtectedRoute allowedRoles={["accountant"]}><StudentAccounts /></ProtectedRoute>} />
+        <Route path="/accountant/collections" element={<ProtectedRoute allowedRoles={["accountant"]}><Collections /></ProtectedRoute>} />
+        <Route path="/accountant/reports" element={<ProtectedRoute allowedRoles={["accountant"]}><AccountantReports /></ProtectedRoute>} />
 
         {/* Tutor Routes */}
         <Route path="/tutor" element={<ProtectedRoute allowedRoles={["tutor"]}><TutorDashboard /></ProtectedRoute>} />

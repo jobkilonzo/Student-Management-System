@@ -184,18 +184,18 @@ const AssignUnitsPage = () => {
     }
   };
 
-  if (loading) return <div className="p-8 text-gray-600">Loading data...</div>;
+  if (loading) return <div className="p-8 text-sky-900/70">Loading data...</div>;
 
   return (
-    <div className="min-h-screen bg-indigo-50 p-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_40%,_#f8fafc_78%)] p-8">
       <button
         onClick={() => navigate(-1)}
-        className="mb-4 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+        className="mb-4 rounded-xl bg-slate-700 px-4 py-2 text-white transition hover:bg-slate-800"
       >
         ← Back
       </button>
 
-      <h1 className="text-3xl font-bold mb-6">Assign Units to Tutors</h1>
+      <h1 className="mb-6 text-3xl font-bold text-slate-900">Assign Units to Tutors</h1>
 
       {error && (
         <div className="mb-4 bg-red-100 px-4 py-2 rounded text-red-700">
@@ -203,7 +203,7 @@ const AssignUnitsPage = () => {
         </div>
       )}
       {success && (
-        <div className="mb-4 bg-green-100 px-4 py-2 rounded text-green-700">
+        <div className="mb-4 rounded-xl bg-sky-100 px-4 py-2 text-sky-800">
           {success}
         </div>
       )}
@@ -211,12 +211,12 @@ const AssignUnitsPage = () => {
       {/* Assignment Form */}
       <form
         onSubmit={handleAssign}
-        className="flex flex-col md:flex-row gap-4 mb-4 items-center"
+        className="mb-6 flex flex-col items-center gap-4 rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg md:flex-row"
       >
         <select
           value={selectedTutor}
           onChange={(e) => setSelectedTutor(e.target.value)}
-          className="border rounded px-4 py-2"
+          className="rounded-xl border border-sky-200 px-4 py-2"
           required
         >
           <option value="">Select a Tutor</option>
@@ -232,13 +232,13 @@ const AssignUnitsPage = () => {
           placeholder="Search unit..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="border rounded px-4 py-2"
+          className="rounded-xl border border-sky-200 px-4 py-2"
         />
 
         <select
           value={selectedUnit}
           onChange={(e) => setSelectedUnit(e.target.value)}
-          className="border rounded px-4 py-2"
+          className="rounded-xl border border-sky-200 px-4 py-2"
           required
         >
           <option value="">Select a Unit</option>
@@ -261,8 +261,8 @@ const AssignUnitsPage = () => {
           disabled={!selectedUnit || !selectedTutor}
           className={`px-4 py-2 rounded text-white ${
             !selectedUnit || !selectedTutor
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-blue-600"
+              ? "bg-slate-300 cursor-not-allowed"
+              : "bg-sky-600 hover:bg-sky-700"
           }`}
         >
           Assign Unit
@@ -271,9 +271,9 @@ const AssignUnitsPage = () => {
 
       {/* Assignments Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full border text-left">
+        <table className="min-w-full overflow-hidden rounded-[28px] border border-sky-100 bg-white/95 text-left shadow-lg">
           <thead>
-            <tr className="bg-gray-100">
+            <tr className="bg-sky-100 text-sky-950">
               <th className="px-4 py-2 border">Tutor</th>
               <th className="px-4 py-2 border">Unit</th>
               <th className="px-4 py-2 border">Course</th>
@@ -314,7 +314,7 @@ const AssignUnitsPage = () => {
                   <td className="px-4 py-2 border text-center">
                     <button
                       onClick={() => handleUnassign(a)}
-                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                      className="rounded-lg bg-amber-500 px-3 py-1 text-white transition hover:bg-amber-600"
                     >
                       Unassign
                     </button>

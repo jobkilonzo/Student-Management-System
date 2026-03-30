@@ -154,62 +154,62 @@ const RegistrarReports = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_35%,_#f8fafc_78%)] flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-xl text-gray-600 font-medium">Loading reports...</p>
+          <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-b-4 border-t-4 border-sky-600"></div>
+          <p className="text-xl font-medium text-sky-900/70">Loading reports...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_35%,_#f8fafc_78%)] p-8">
       {/* Header Section with Back Button */}
       <div className="mb-10">
         <div className="flex items-center gap-4 mb-4">
           <button
             onClick={handleBack}
-            className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg transition duration-300"
+            className="flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2 font-semibold text-white transition duration-300 hover:bg-slate-800"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
             </svg>
             Back
           </button>
-          <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+          <h1 className="bg-gradient-to-r from-sky-700 via-sky-500 to-cyan-500 bg-clip-text text-4xl font-extrabold text-transparent">
             Registrar Reports
           </h1>
         </div>
-        <p className="text-gray-600 mt-2 text-lg">
+        <p className="mt-2 text-lg text-sky-950/70">
           Comprehensive overview of courses, students, and enrollment statistics
         </p>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-transform duration-300">
+        <div className="transform rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg transition-transform duration-300 hover:scale-105">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-500 text-sm font-medium">Total Students</p>
               <p className="text-3xl font-bold text-gray-800 mt-2">{stats.totalStudents}</p>
             </div>
-            <div className="bg-blue-100 p-3 rounded-full">
-              <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="rounded-full bg-sky-100 p-3">
+              <svg className="h-8 w-8 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-transform duration-300">
+        <div className="transform rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg transition-transform duration-300 hover:scale-105">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-500 text-sm font-medium">Total Courses</p>
               <p className="text-3xl font-bold text-gray-800 mt-2">{stats.totalCourses}</p>
             </div>
-            <div className="bg-green-100 p-3 rounded-full">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="rounded-full bg-cyan-100 p-3">
+              <svg className="h-8 w-8 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
               </svg>
             </div>
@@ -218,14 +218,14 @@ const RegistrarReports = () => {
 
         {/* Dynamic Gender Cards */}
         {stats.genderDistribution.map((gender, index) => (
-          <div key={gender.name} className="bg-white rounded-2xl shadow-lg p-6 transform hover:scale-105 transition-transform duration-300">
+          <div key={gender.name} className="transform rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg transition-transform duration-300 hover:scale-105">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500 text-sm font-medium">{gender.name} Students</p>
                 <p className="text-3xl font-bold text-gray-800 mt-2">{gender.value}</p>
               </div>
-              <div className={`p-3 rounded-full ${gender.name === 'Male' ? 'bg-blue-100' : gender.name === 'Female' ? 'bg-pink-100' : 'bg-purple-100'}`}>
-                <svg className={`w-8 h-8 ${gender.name === 'Male' ? 'text-blue-600' : gender.name === 'Female' ? 'text-pink-600' : 'text-purple-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className={`p-3 rounded-full ${gender.name === 'Male' ? 'bg-sky-100' : gender.name === 'Female' ? 'bg-amber-100' : 'bg-cyan-100'}`}>
+                <svg className={`w-8 h-8 ${gender.name === 'Male' ? 'text-sky-600' : gender.name === 'Female' ? 'text-amber-600' : 'text-cyan-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
@@ -237,9 +237,9 @@ const RegistrarReports = () => {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         {/* Course Distribution Chart */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg">
           <h2 className="text-xl font-semibold mb-4 flex items-center">
-            <span className="bg-blue-600 w-2 h-6 rounded-full mr-3"></span>
+            <span className="mr-3 h-6 w-2 rounded-full bg-sky-600"></span>
             Student Distribution by Course
           </h2>
           {stats.courseDistribution.length > 0 ? (
@@ -276,9 +276,9 @@ const RegistrarReports = () => {
         </div>
 
         {/* Gender Distribution Pie Chart */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg">
           <h2 className="text-xl font-semibold mb-4 flex items-center">
-            <span className="bg-purple-600 w-2 h-6 rounded-full mr-3"></span>
+            <span className="mr-3 h-6 w-2 rounded-full bg-cyan-600"></span>
             Gender Distribution
           </h2>
           {stats.genderDistribution.length > 0 ? (
@@ -318,9 +318,9 @@ const RegistrarReports = () => {
       {/* Tables Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Courses Table */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg">
           <h2 className="text-xl font-semibold mb-4 flex items-center">
-            <span className="bg-green-600 w-2 h-6 rounded-full mr-3"></span>
+            <span className="mr-3 h-6 w-2 rounded-full bg-sky-600"></span>
             Courses Overview
           </h2>
           <div className="overflow-x-auto max-h-96">
@@ -388,9 +388,9 @@ const RegistrarReports = () => {
         </div>
 
         {/* Students Table with Search */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg">
           <h2 className="text-xl font-semibold mb-4 flex items-center">
-            <span className="bg-yellow-600 w-2 h-6 rounded-full mr-3"></span>
+            <span className="mr-3 h-6 w-2 rounded-full bg-amber-500"></span>
             Students Overview
           </h2>
           
@@ -484,14 +484,14 @@ const RegistrarReports = () => {
 
       {/* Summary Cards */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl shadow-lg p-6 text-white">
+        <div className="rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 p-6 text-white shadow-lg">
           <h3 className="text-lg font-semibold mb-2">Average Students per Course</h3>
           <p className="text-3xl font-bold">
             {stats.totalCourses ? (stats.totalStudents / stats.totalCourses).toFixed(1) : 0}
           </p>
         </div>
         
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl shadow-lg p-6 text-white">
+        <div className="rounded-2xl bg-gradient-to-r from-slate-700 to-sky-700 p-6 text-white shadow-lg">
           <h3 className="text-lg font-semibold mb-2">Most Popular Course</h3>
           <p className="text-xl font-bold">
             {stats.courseDistribution[0]?.fullName || 'N/A'}
@@ -501,7 +501,7 @@ const RegistrarReports = () => {
           </p>
         </div>
         
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl shadow-lg p-6 text-white">
+        <div className="rounded-2xl bg-gradient-to-r from-amber-500 to-sky-600 p-6 text-white shadow-lg">
           <h3 className="text-lg font-semibold mb-2">Gender Distribution</h3>
           <div className="space-y-2">
             {stats.genderDistribution.map(g => (

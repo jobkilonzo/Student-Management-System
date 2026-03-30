@@ -76,118 +76,167 @@ const CourseManagement = () => {
     }
   };
 
-  const filteredCourses = courses.filter(c => {
+  const filteredCourses = courses.filter((course) => {
     const query = search.toLowerCase();
     return (
-      c.course_code?.toLowerCase().includes(query) ||
-      c.course_name?.toLowerCase().includes(query)
+      course.course_code?.toLowerCase().includes(query) ||
+      course.course_name?.toLowerCase().includes(query)
     );
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white to-emerald-50 p-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#eff6ff_35%,_#f8fafc_70%)]">
       <Toaster position="top-right" />
-      <div className="max-w-6xl mx-auto bg-white shadow rounded-xl border border-gray-200 p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Course Management</h1>
-          <button
-            onClick={() => navigate("/admin")}
-            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
-          >
-            Back to Admin Dashboard
-          </button>
-        </div>
 
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <input
-            type="text"
-            placeholder="Course Code"
-            value={form.course_code}
-            onChange={(e) => setForm({ ...form, course_code: e.target.value })}
-            className="border rounded-lg p-2"
-          />
-          <input
-            type="text"
-            placeholder="Course Name"
-            value={form.course_name}
-            onChange={(e) => setForm({ ...form, course_name: e.target.value })}
-            className="border rounded-lg p-2"
-          />
-          <div className="flex gap-2">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+        <section className="relative overflow-hidden rounded-[30px] border border-sky-200/80 bg-gradient-to-br from-sky-700 via-sky-600 to-cyan-500 px-6 py-8 text-white shadow-[0_24px_70px_-35px_rgba(14,116,144,0.6)]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.24),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(186,230,253,0.25),_transparent_32%)]" />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-sky-50">
+                Academic Catalogue
+              </div>
+              <h1 className="mt-4 text-4xl font-black tracking-tight">Course Management</h1>
+              <p className="mt-3 max-w-2xl text-sm text-sky-50/90 sm:text-base">
+                Maintain the programme catalogue from one polished admin workspace with cleaner
+                search, editing, and course review.
+              </p>
+            </div>
             <button
-              type="submit"
-              disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+              onClick={() => navigate("/admin")}
+              className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-sky-800 shadow-lg transition hover:bg-sky-50"
             >
-              {editingCourse ? "Update Course" : "Create Course"}
+              Back to Admin Dashboard
             </button>
-            {editingCourse && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg"
-              >
-                Cancel
-              </button>
-            )}
           </div>
-        </form>
+        </section>
 
-        <div className="mb-4 flex justify-between items-center">
-          <input
-            type="text"
-            placeholder="Search courses..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="border rounded-lg p-2 w-1/2"
-          />
-          <span className="text-gray-500">{courses.length} courses</span>
-        </div>
+        <div className="grid gap-8 xl:grid-cols-[0.9fr_1.25fr]">
+          <section className="rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_20px_60px_-35px_rgba(15,23,42,0.35)] backdrop-blur">
+            <div className="mb-6">
+              <div className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-sky-700">
+                {editingCourse ? "Edit Course" : "Create Course"}
+              </div>
+              <h2 className="mt-3 text-2xl font-bold text-slate-900">
+                {editingCourse ? "Update course details" : "Add a new programme"}
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Keep course codes and programme names consistent across the institution.
+              </p>
+            </div>
 
-        <div className="overflow-auto">
-          {loading ? (
-            <p>Loading courses...</p>
-          ) : (
-            <table className="min-w-full border">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="p-2 text-left">Course Code</th>
-                  <th className="p-2 text-left">Course Name</th>
-                  <th className="p-2 text-left">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCourses.length === 0 ? (
-                  <tr>
-                    <td colSpan="3" className="p-4 text-center text-gray-500">
-                      No courses found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredCourses.map((course) => (
-                    <tr key={course.course_id} className="hover:bg-gray-50">
-                      <td className="p-2">{course.course_code}</td>
-                      <td className="p-2">{course.course_name}</td>
-                      <td className="p-2 space-x-2">
-                        <button
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded"
-                          onClick={() => handleEdit(course)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
-                          onClick={() => handleDelete(course.course_id)}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <input
+                type="text"
+                placeholder="Course Code"
+                value={form.course_code}
+                onChange={(e) => setForm({ ...form, course_code: e.target.value })}
+                className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
+              />
+              <input
+                type="text"
+                placeholder="Course Name"
+                value={form.course_name}
+                onChange={(e) => setForm({ ...form, course_name: e.target.value })}
+                className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
+              />
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="rounded-2xl bg-sky-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:opacity-60"
+                >
+                  {editingCourse ? "Update Course" : "Create Course"}
+                </button>
+                {editingCourse && (
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="rounded-2xl border border-sky-200 bg-white px-5 py-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
+                  >
+                    Cancel
+                  </button>
                 )}
-              </tbody>
-            </table>
-          )}
+              </div>
+            </form>
+          </section>
+
+          <section className="rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_20px_60px_-35px_rgba(15,23,42,0.35)] backdrop-blur">
+            <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-sky-700">
+                  Course Directory
+                </div>
+                <h2 className="mt-3 text-2xl font-bold text-slate-900">Programme catalogue</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Search, review, and update available courses from one table.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                <span className="font-semibold">{filteredCourses.length}</span> courses shown
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <input
+                type="text"
+                placeholder="Search courses..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
+              />
+            </div>
+
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
+              {loading ? (
+                <p className="p-8 text-center text-slate-500">Loading courses...</p>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="min-w-full">
+                    <thead className="bg-slate-100/80">
+                      <tr>
+                        <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Course Code</th>
+                        <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Course Name</th>
+                        <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {filteredCourses.length === 0 ? (
+                        <tr>
+                          <td colSpan="3" className="p-8 text-center text-slate-500">
+                            No courses found
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredCourses.map((course) => (
+                          <tr key={course.course_id} className="bg-white transition hover:bg-sky-50/60">
+                            <td className="px-5 py-4 font-semibold text-slate-900">{course.course_code}</td>
+                            <td className="px-5 py-4 text-slate-600">{course.course_name}</td>
+                            <td className="px-5 py-4">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  className="rounded-xl bg-sky-100 px-3 py-1.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-200"
+                                  onClick={() => handleEdit(course)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="rounded-xl bg-rose-100 px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-200"
+                                  onClick={() => handleDelete(course.course_id)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </div>

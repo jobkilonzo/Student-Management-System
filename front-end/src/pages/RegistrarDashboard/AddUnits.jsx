@@ -129,11 +129,11 @@ const AddUnits = () => {
   const handleBack = () => navigate(-1);
 
   return (
-    <div className="min-h-screen bg-slate-100 p-8 flex flex-col">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_38%,_#f8fafc_78%)] p-8 flex flex-col">
       {/* Back Button */}
       <button
         onClick={handleBack}
-        className="bg-gray-500 text-white px-4 py-2 rounded mb-4 hover:bg-gray-600 transition"
+        className="mb-4 rounded-xl bg-slate-700 px-4 py-2 text-white transition hover:bg-slate-800"
       >
         &larr; Back
       </button>
@@ -145,7 +145,7 @@ const AddUnits = () => {
       {/* Unit Form (Add/Edit) */}
       <form
         onSubmit={handleSubmit}
-        className="bg-white p-6 rounded-xl shadow grid grid-cols-1 md:grid-cols-4 gap-4 mb-8"
+        className="mb-8 grid grid-cols-1 gap-4 rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg md:grid-cols-4"
       >
         <input
           name="code"
@@ -153,7 +153,7 @@ const AddUnits = () => {
           onChange={handleChange}
           placeholder="Unit Code (e.g., BIT101)"
           required
-          className="border p-2 rounded"
+          className="rounded-xl border border-sky-200 p-3"
           disabled={loading}
         />
         <input
@@ -162,7 +162,7 @@ const AddUnits = () => {
           onChange={handleChange}
           placeholder="Unit Name"
           required
-          className="border p-2 rounded"
+          className="rounded-xl border border-sky-200 p-3"
           disabled={loading}
         />
         <input
@@ -170,14 +170,14 @@ const AddUnits = () => {
           value={form.module}
           onChange={handleChange}
           placeholder="E.g Module 1"
-          className="border p-2 rounded"
+          className="rounded-xl border border-sky-200 p-3"
           disabled={loading}
         />
         <div className="col-span-full flex gap-2">
           <button
             type="submit"
             disabled={loading}
-            className="bg-blue-600 text-white rounded p-2 flex-1 hover:bg-blue-700 transition"
+            className="flex-1 rounded-xl bg-sky-600 p-3 text-white transition hover:bg-sky-700"
           >
             {loading ? "Saving..." : editingUnitId ? "Save Changes" : "Add Unit"}
           </button>
@@ -186,7 +186,7 @@ const AddUnits = () => {
               type="button"
               onClick={handleCancelEdit}
               disabled={loading}
-              className="bg-gray-500 text-white rounded p-2 flex-1 hover:bg-gray-600 transition"
+              className="flex-1 rounded-xl bg-slate-600 p-3 text-white transition hover:bg-slate-700"
             >
               Cancel
             </button>
@@ -196,8 +196,8 @@ const AddUnits = () => {
 
       {/* Units Table */}
       <div className="overflow-x-auto flex-1">
-        <table className="w-full bg-white rounded-xl shadow text-left">
-          <thead className="bg-slate-200">
+        <table className="w-full rounded-[28px] bg-white/95 shadow-lg text-left">
+          <thead className="bg-sky-100 text-sky-950">
             <tr>
               <th className="px-4 py-3">Unit Code</th>
               <th className="px-4 py-3">Unit Name</th>
@@ -216,7 +216,7 @@ const AddUnits = () => {
               units.map((u) => (
                 <tr
                   key={u.unit_id}
-                  className="border-t hover:bg-blue-50 transition rounded-md"
+                  className="rounded-md border-t transition hover:bg-sky-50"
                 >
                   <td className="px-4 py-2">{u.unit_code}</td>
                   <td className="px-4 py-2">{u.unit_name}</td>
@@ -225,7 +225,7 @@ const AddUnits = () => {
                     <button
                       onClick={() => handleEdit(u)}
                       disabled={loading}
-                      className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600 transition"
+                      className="rounded-lg bg-amber-500 px-3 py-1 text-white transition hover:bg-amber-600"
                     >
                       Edit
                     </button>
