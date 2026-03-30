@@ -16,6 +16,7 @@ import attendanceRoutes from "./routes/tutor/route.attendance.js";
 import generateTranscriptRouter from "./routes/registrar/route.generateTranscript.js"; 
 import notificationsRouter from "./routes/registrar/routes.notifications.js";
 import studentRouter from "./routes/student/routes.student.js"; 
+import accountantRouter from "./routes/accountant/routes.accountant.js";
 import { initDatabase } from "./database/init.js";
 
 const app = express();
@@ -67,6 +68,7 @@ app.use('/api/v1/tutor', tutorRoutes);
 app.use('/api/v1/marks', markRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/student', studentRouter);
+app.use('/api/v1/accountant', accountantRouter);
 
 // Start server
 server.listen(PORT, () => {

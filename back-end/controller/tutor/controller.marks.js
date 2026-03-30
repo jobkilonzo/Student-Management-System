@@ -27,24 +27,30 @@ export const getStudentsForMarks = async (req, res) => {
   const unitId = Number(req.params.unitId);
 
   try {
-    // 1. Get course_id for this unit assignment
+    // 1. Get the tutor assignment for this unit
     const [unitAssignRows] = await db.query(
-      `SELECT course_id FROM unit_assignments WHERE tutor_id=? AND unit_id=?`,
+      `SELECT course_id, module FROM unit_assignments WHERE tutor_id=? AND unit_id=?`,
       [tutorId, unitId]
     );
     if (!unitAssignRows.length) return res.status(404).json({ error: "Unit assignment not found" });
 
-    const courseId = unitAssignRows[0].course_id;
+    const courseId = Number(unitAssignRows[0].course_id);
+    const assignmentModule = unitAssignRows[0].module || null;
 
-    // 2. Get all students in the course
+    // 2. Get students for the current course/module stage only
     const [students] = await db.query(
-      `SELECT id FROM students WHERE course_id=?`,
-      [courseId]
+      `
+        SELECT id
+        FROM students
+        WHERE course_id = ?
+          AND (? IS NULL OR ? = '' OR module = ?)
+      `,
+      [courseId, assignmentModule, assignmentModule, assignmentModule]
     );
 
     // 3. Auto-insert missing marks
     if (students.length > 0) {
-      const values = students.map(s => [s.id, unitId, 0, 0, 0, '-']);
+      const values = students.map((s) => [s.id, unitId, 0, 0, 0, "-"]);
       await db.query(
         `INSERT INTO marks (student_id, unit_id, cat_mark, exam_mark, total, grade)
          VALUES ? 
@@ -53,12 +59,15 @@ export const getStudentsForMarks = async (req, res) => {
       );
     }
 
-    // 4. Fetch students with marks
+    // 4. Fetch students with marks for the active stage only
     const [results] = await db.query(
       `SELECT 
         s.id,
-        CONCAT(s.first_name, ' ', COALESCE(s.middle_name, ''), ' ', s.last_name) AS name,
+        CONCAT_WS(' ', s.first_name, NULLIF(s.middle_name, ''), s.last_name) AS name,
         s.reg_no,
+        s.course_id,
+        s.module,
+        s.term,
         COALESCE(m.cat_mark, 0) AS cat_mark,
         COALESCE(m.exam_mark, 0) AS exam_mark,
         COALESCE(m.total, 0) AS total,
@@ -71,6 +80,7 @@ export const getStudentsForMarks = async (req, res) => {
        LEFT JOIN marks m 
          ON m.student_id = s.id AND m.unit_id = u.unit_id
        WHERE s.course_id = ua.course_id
+         AND (ua.module IS NULL OR ua.module = '' OR s.module = ua.module)
        ORDER BY s.reg_no`,
       [unitId, tutorId]
     );

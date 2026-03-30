@@ -2,7 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { makeRequest } from "../../../axios";
-import PortalItem from "../../components/PortalItem";
+import RegistrarActionCard from "./RegistrarActionCard";
 
 const RegistrarDashboard = () => {
   const navigate = useNavigate();
@@ -53,31 +53,30 @@ const RegistrarDashboard = () => {
   };
 
   return (
-    <div className="p-6 min-h-screen bg-gray-50 space-y-10">
+    <div className="min-h-screen space-y-10 bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_35%,_#f8fafc_78%)] p-6">
       
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900">
+          <h1 className="text-3xl font-semibold text-slate-900">
             Registrar Dashboard
           </h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <p className="mt-1 text-sm text-sky-900/70">
             Manage courses, students, and academic operations
           </p>
         </div>
 
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-100 transition"
+          className="inline-flex items-center rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50"
         >
-          <span className="text-lg">🚪</span>
           Logout
         </button>
       </div>
 
       {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl p-6 shadow-md flex items-center gap-4">
-        <div className="w-12 h-12 flex items-center justify-center bg-white/20 rounded-xl text-2xl">
+      <div className="flex items-center gap-4 rounded-[28px] border border-sky-200 bg-gradient-to-r from-sky-600 via-sky-500 to-cyan-500 p-6 text-white shadow-lg">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 text-2xl">
           👤
         </div>
         <div>
@@ -92,46 +91,46 @@ const RegistrarDashboard = () => {
 
       {/* Quick Actions */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">
+        <h3 className="mb-4 text-lg font-semibold text-slate-900">
           Quick Actions
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <PortalItem
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <RegistrarActionCard
             label="Manage Courses"
             to="/registrar/courses"
-            description="Add courses and define units."
+            description="Maintain course structure, codes, and the unit setup for each programme."
             icon="📚"
           />
-          <PortalItem
+          <RegistrarActionCard
             label="Manage Students"
             to="/registrar/students"
-            description="Add students and assign courses."
+            description="Review student records, edit details, and transition learners across modules and terms."
             icon="🎓"
           />
-          <PortalItem
+          <RegistrarActionCard
             label="View Reports"
             to="/registrar/reports"
-            description="View courses and analytics."
+            description="Track enrollment, distribution, and academic reporting from a central analytics page."
             icon="📄"
           />
-          <PortalItem
+          <RegistrarActionCard
             label="Assign Units"
             to="/registrar/assign-units"
-            description="Assign units to tutors."
+            description="Allocate units to tutors and control marks-entry permissions with confidence."
             icon="🧑‍🏫"
           />
-          <PortalItem
+          <RegistrarActionCard
             label="Generate Transcript"
             to="/registrar/transcript"
-            description="Generate student transcripts."
+            description="Prepare institutional transcripts with cleaner presentation and downloadable output."
             icon="📜"
           />
           {isTutor && (
-            <PortalItem
+            <RegistrarActionCard
               label="Tutor Dashboard"
               to="/tutor/dashboard"
-              description="Access your tutor panel."
+              description="Open your tutor workspace directly when you also serve in teaching responsibilities."
               icon="👨‍🏫"
             />
           )}
@@ -140,7 +139,7 @@ const RegistrarDashboard = () => {
 
       {/* Stats */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">
+        <h3 className="mb-4 text-lg font-semibold text-slate-900">
           Overview
         </h3>
 
@@ -179,21 +178,21 @@ const RegistrarDashboard = () => {
 /* Improved Stat Card with Icon Styling */
 const StatCard = ({ icon, title, value, highlight, loading }) => {
   return (
-    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-1 transition-all duration-200">
+    <div className="rounded-3xl border border-sky-100 bg-white/95 p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg">
       
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{title}</p>
-        <div className="text-xl bg-gray-100 w-10 h-10 flex items-center justify-center rounded-lg">
+        <p className="text-sm text-sky-900/65">{title}</p>
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-xl text-sky-700">
           {icon}
         </div>
       </div>
 
       {loading ? (
-        <div className="h-8 w-16 bg-gray-200 animate-pulse rounded mt-4" />
+        <div className="mt-4 h-8 w-16 animate-pulse rounded bg-sky-100" />
       ) : (
         <h2
           className={`text-3xl font-semibold mt-4 ${
-            highlight ? "text-amber-500" : "text-gray-900"
+            highlight ? "text-amber-500" : "text-slate-900"
           }`}
         >
           {value}

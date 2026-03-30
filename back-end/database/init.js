@@ -36,6 +36,7 @@ const UNITS_TABLE_SQL = `
 const STUDENTS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS students (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
     reg_no VARCHAR(100) NOT NULL UNIQUE,
     first_name VARCHAR(100) NOT NULL,
     middle_name VARCHAR(100),
@@ -53,6 +54,8 @@ const STUDENTS_TABLE_SQL = `
     photo VARCHAR(500),
     createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_student_user (user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE
   ) ENGINE=InnoDB;
 `;
@@ -115,6 +118,57 @@ const UNIT_MARK_CONTROLS_TABLE_SQL = `
   ) ENGINE=InnoDB;
 `;
 
+const COURSE_FEES_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS course_fees (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    course_id INT NOT NULL UNIQUE,
+    amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    currency VARCHAR(10) NOT NULL DEFAULT 'KSh',
+    set_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE,
+    FOREIGN KEY (set_by) REFERENCES users(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB;
+`;
+
+const FEE_PAYMENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS fee_payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    course_id INT NOT NULL,
+    amount_paid DECIMAL(12,2) NOT NULL,
+    payment_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reference VARCHAR(120),
+    notes TEXT,
+    created_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB;
+`;
+
+const STUDENT_PROGRESSIONS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS student_progressions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    course_id INT NOT NULL,
+    course_code VARCHAR(50),
+    course_name VARCHAR(255),
+    module VARCHAR(100),
+    term VARCHAR(50),
+    fee_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    changed_by INT NULL,
+    archived_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE,
+    FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB;
+`;
+
 const DEFAULT_ADMIN_EMAIL = "admin@school.com";
 const DEFAULT_ADMIN_PASSWORD = "Admin123!";
 const DEFAULT_ADMIN_NAME = "Administrator";
@@ -130,6 +184,9 @@ export const initDatabase = async () => {
     await db.execute(NOTIFICATIONS_TABLE_SQL);
     await db.execute(UNIT_ASSIGNMENTS_TABLE_SQL);
     await db.execute(UNIT_MARK_CONTROLS_TABLE_SQL);
+    await db.execute(COURSE_FEES_TABLE_SQL);
+    await db.execute(FEE_PAYMENTS_TABLE_SQL);
+    await db.execute(STUDENT_PROGRESSIONS_TABLE_SQL);
 
     console.log("All tables created or already exist");
 

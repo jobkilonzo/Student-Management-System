@@ -214,7 +214,7 @@ export const updateStudent = async (req, res) => {
 
     // ✅ 1. GET user_id from students
     const [[student]] = await connection.execute(
-      "SELECT user_id FROM students WHERE id=?",
+      "SELECT user_id, course_id, module, term FROM students WHERE id=?",
       [id]
     );
 
@@ -223,6 +223,56 @@ export const updateStudent = async (req, res) => {
     }
 
     const userId = student.user_id;
+    const currentCourseId = Number(student.course_id);
+    const nextCourseId = Number(course_id);
+    const currentModule = student.module || "";
+    const nextModule = module || "";
+    const currentTerm = student.term || "";
+    const nextTerm = term || "";
+    const academicStageChanged =
+      currentCourseId !== nextCourseId ||
+      currentModule !== nextModule ||
+      currentTerm !== nextTerm;
+
+    if (academicStageChanged) {
+      const [historySnapshotRows] = await connection.execute(
+        `
+          SELECT
+            c.course_id,
+            c.course_code,
+            c.course_name,
+            COALESCE(cf.amount, 0) AS fee_amount
+          FROM courses c
+          LEFT JOIN course_fees cf ON c.course_id = cf.course_id
+          WHERE c.course_id = ?
+          LIMIT 1
+        `,
+        [currentCourseId]
+      );
+
+      const historySnapshot = historySnapshotRows[0];
+
+      if (historySnapshot) {
+        await connection.execute(
+          `
+            INSERT INTO student_progressions
+            (student_id, course_id, course_code, course_name, module, term, fee_amount, changed_by, archived_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            id,
+            historySnapshot.course_id,
+            historySnapshot.course_code,
+            historySnapshot.course_name,
+            currentModule || null,
+            currentTerm || null,
+            Number(historySnapshot.fee_amount || 0),
+            req.user?.id || null,
+            moment().format("YYYY-MM-DD HH:mm:ss"),
+          ]
+        );
+      }
+    }
 
     // ✅ 2. UPDATE students table
     let query = `

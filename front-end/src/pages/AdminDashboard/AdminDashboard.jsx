@@ -281,7 +281,7 @@ const AdminDashboard = () => {
                     />
                   </div>
                   <button
-                    onClick={() => setActiveTab("users")}
+                    onClick={() => navigate("/admin/users")}
                     className="whitespace-nowrap bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition duration-150"
                   >
                     Go to Create User

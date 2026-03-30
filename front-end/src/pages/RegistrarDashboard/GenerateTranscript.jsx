@@ -83,23 +83,23 @@ const downloadPDF = () => {
   };
 
   return (
-    <div className="p-6 min-h-screen" style={{ backgroundColor: "#f8fafc" }}>
+    <div className="min-h-screen p-6" style={{ background: "radial-gradient(circle at top, #e0f2fe, #f0f9ff 35%, #f8fafc 78%)" }}>
       {/* Back button */}
       <button
         onClick={() => navigate(-1)} // <-- go back to previous page
-        className="mb-4 px-4 py-2 rounded"
-        style={{ backgroundColor: "#6b7280", color: "#ffffff" }}
+        className="mb-4 rounded-xl px-4 py-2 text-white"
+        style={{ backgroundColor: "#334155", color: "#ffffff" }}
       >
         Back
       </button>
-      <h1 style={{ color: "#1e293b" }} className="text-3xl font-bold mb-4">
+      <h1 style={{ color: "#0f172a" }} className="mb-4 text-3xl font-bold">
         Generate Student Transcript
       </h1>
 
       {/* Controls */}
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-2 rounded-[28px] border border-sky-100 bg-white/95 p-5 shadow-lg">
         <select
-          className="p-2 border rounded"
+          className="rounded-xl border border-sky-200 p-3"
           value={selectedStudent}
           onChange={(e) => setSelectedStudent(e.target.value)}
         >
@@ -114,7 +114,7 @@ const downloadPDF = () => {
         <button
           onClick={handleGenerate}
           className="px-4 py-2 rounded"
-          style={{ backgroundColor: "#2563eb", color: "#ffffff" }}
+          style={{ backgroundColor: "#0284c7", color: "#ffffff" }}
         >
           Generate
         </button>
@@ -124,7 +124,7 @@ const downloadPDF = () => {
             <button
               onClick={downloadPDF}
               className="px-4 py-2 rounded"
-              style={{ backgroundColor: "#16a34a", color: "#ffffff" }}
+              style={{ backgroundColor: "#0369a1", color: "#ffffff" }}
             >
               Download PDF
             </button>
@@ -132,7 +132,7 @@ const downloadPDF = () => {
             <button
               onClick={() => window.print()}
               className="px-4 py-2 rounded"
-              style={{ backgroundColor: "#374151", color: "#ffffff" }}
+              style={{ backgroundColor: "#f59e0b", color: "#ffffff" }}
             >
               Print
             </button>
@@ -158,7 +158,7 @@ const downloadPDF = () => {
             <h3 style={{ color: "#1e293b" }} className="font-semibold text-lg">
               St John Paul II Institute
             </h3>
-            <p style={{ color: "#1e293b" }}>P.O. BOX 373 - 90200</p>
+            <p style={{ color: "#1e293b" }}>P.O. BOX 300 - 90200</p>
             <p style={{ color: "#1e293b" }}>Phone: 0706333977 / 0726607683</p>
             <p style={{ color: "#1e293b" }}>Email: stjohnpauliiinstitute@gmail.com</p>
           </div>
