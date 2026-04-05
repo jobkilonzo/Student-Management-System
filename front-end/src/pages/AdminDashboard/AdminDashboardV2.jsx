@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { makeRequest } from "../../../axios";
 import toast, { Toaster } from "react-hot-toast";
 import RegistrarDashboard from "../RegistrarDashboard/RegistrarDashboard";
+import AdminAuditLogs from "./AdminAuditLogs";
 
 const ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer"];
 
@@ -32,9 +33,13 @@ const AdminDashboardV2 = () => {
     email: "",
     role: "registrar",
     course_id: "",
+    gender: "",
   });
   const [resetUser, setResetUser] = useState(null);
   const [newPassword, setNewPassword] = useState("");
+  const [deletedUsers, setDeletedUsers] = useState([]);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmPermanentDelete, setConfirmPermanentDelete] = useState(null);
 
   const fetchUsers = async (pageNum = 1, searchTerm = search) => {
     try {
@@ -81,32 +86,85 @@ const AdminDashboardV2 = () => {
     }
   };
 
+  const fetchDeletedUsers = async () => {
+    try {
+      const res = await makeRequest.get("/auth/users/deleted");
+      setDeletedUsers(res.data.users || []);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to fetch deleted users");
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     fetchCourses();
   }, []);
 
   useEffect(() => {
+    if (activeTab === "trash") {
+      fetchDeletedUsers();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
     const delay = setTimeout(() => fetchUsers(1, search), 400);
     return () => clearTimeout(delay);
   }, [search]);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate("/login");
-  };
-
-  const handleDeleteUser = async (id) => {
-    if (!window.confirm("Delete user?")) return;
+  const handleLogout = async () => {
     try {
-      await makeRequest.delete(`auth/users/${id}`);
-      toast.success("User deleted");
-      fetchUsers();
-    } catch {
-      toast.error("Delete failed");
+      // Call logout endpoint to blacklist token
+      await makeRequest.post("/auth/logout");
+      localStorage.clear();
+      navigate("/login");
+      toast.success("Logged out successfully");
+    } catch (err) {
+      console.error("Logout error:", err);
+      // Still clear local storage even if API call fails
+      localStorage.clear();
+      navigate("/login");
     }
   };
 
+  const handleSoftDeleteUser = async (id) => {
+    if (!window.confirm("Soft delete this user? They can be restored later.")) return;
+    try {
+      await makeRequest.delete(`auth/users/${id}`);
+      toast.success("User soft deleted successfully");
+      fetchUsers();
+      if (activeTab === "trash") fetchDeletedUsers();
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.error || "Delete failed");
+    }
+  };
+
+  const handlePermanentDeleteUser = async (id) => {
+    if (!window.confirm("PERMANENTLY DELETE this user? This action CANNOT be undone!")) return;
+    try {
+      await makeRequest.delete(`auth/users/${id}/permanent`);
+      toast.success("User permanently deleted");
+      fetchUsers();
+      if (activeTab === "trash") fetchDeletedUsers();
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.error || "Permanent delete failed");
+    }
+  };
+
+  const handleRestoreUser = async (id) => {
+    if (!window.confirm("Restore this user?")) return;
+    try {
+      await makeRequest.put(`/auth/users/restore/${id}`);
+      toast.success("User restored successfully");
+      fetchDeletedUsers();
+      fetchUsers();
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to restore user");
+    }
+  };
   const handleEditUser = (u) => {
     setEditingUser(u);
     setEditForm({
@@ -116,6 +174,7 @@ const AdminDashboardV2 = () => {
       email: u.email || "",
       role: u.role || "registrar",
       course_id: u.course_id || "",
+      gender: u.gender || "", // Add gender
     });
   };
 
@@ -126,7 +185,7 @@ const AdminDashboardV2 = () => {
         ...editForm,
         course_id: editForm.role === "student" ? editForm.course_id : null,
       });
-      toast.success("Updated");
+      toast.success("User updated successfully");
       setEditingUser(null);
       fetchUsers();
     } catch {
@@ -137,11 +196,11 @@ const AdminDashboardV2 = () => {
   const handleResetPassword = async () => {
     try {
       await makeRequest.put(`auth/users/${resetUser.id}`, { newPassword });
-      toast.success("Password updated");
+      toast.success("Password updated successfully");
       setResetUser(null);
       setNewPassword("");
     } catch {
-      toast.error("Failed");
+      toast.error("Failed to reset password");
     }
   };
 
@@ -248,6 +307,12 @@ const AdminDashboardV2 = () => {
               <TabButton label="User Management" active={activeTab === "users"} onClick={() => setActiveTab("users")} />
               <TabButton label="Registrar Panel" active={activeTab === "registrar"} onClick={() => setActiveTab("registrar")} />
               <TabButton label="System Overview" active={activeTab === "system"} onClick={() => setActiveTab("system")} />
+              <TabButton label="Audit Logs" active={activeTab === "audit"} onClick={() => setActiveTab("audit")} />
+              <TabButton
+                label={`Trash (${deletedUsers.length})`}
+                active={activeTab === "trash"}
+                onClick={() => setActiveTab("trash")}
+              />
             </nav>
           </div>
 
@@ -345,12 +410,15 @@ const AdminDashboardV2 = () => {
                                   Reset
                                 </button>
                                 {u.role !== "admin" && (
-                                  <button
-                                    onClick={() => handleDeleteUser(u.id)}
-                                    className="text-rose-600 transition hover:text-rose-800"
-                                  >
-                                    Delete
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => handleSoftDeleteUser(u.id)}
+                                      className="text-rose-600 transition hover:text-rose-800"
+                                    >
+                                      Soft Delete
+                                    </button>
+
+                                  </>
                                 )}
                               </>
                             )}
@@ -368,11 +436,10 @@ const AdminDashboardV2 = () => {
                         <button
                           key={`page-${i}`}
                           onClick={() => fetchUsers(i + 1)}
-                          className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-                            page === i + 1
-                              ? "bg-slate-900 text-white shadow"
-                              : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                          }`}
+                          className={`rounded-xl px-4 py-2 text-sm font-medium transition ${page === i + 1
+                            ? "bg-slate-900 text-white shadow"
+                            : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                            }`}
                         >
                           {i + 1}
                         </button>
@@ -380,6 +447,66 @@ const AdminDashboardV2 = () => {
                     </nav>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Trash Tab - Deleted Users */}
+            {activeTab === "trash" && (
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Deleted Users (Trash)</h3>
+                <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
+                  <table className="w-full">
+                    <thead className="bg-slate-100/80">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Name</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Email</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Role</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Deleted At</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {deletedUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="px-6 py-8 text-center text-slate-500">
+                            No deleted users found
+                          </td>
+                        </tr>
+                      ) : (
+                        deletedUsers.map((user) => (
+                          <tr key={user.id} className="bg-white transition hover:bg-sky-50/60">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-semibold text-slate-900">
+                                {[user.first_name, user.middle_name, user.last_name].filter(Boolean).join(" ")}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{user.email}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <StatusPill role={user.role} />
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
+                              {new Date(user.deleted_at).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
+                              <button
+                                onClick={() => handleRestoreUser(user.id)}
+                                className="text-green-600 transition hover:text-green-800"
+                              >
+                                Restore
+                              </button>
+                              <button
+                                onClick={() => handlePermanentDeleteUser(user.id)}
+                                className="text-red-700 transition hover:text-red-900 font-bold"
+                              >
+                                Permanently Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -400,6 +527,21 @@ const AdminDashboardV2 = () => {
                   </button>
                 </div>
                 <RegistrarDashboard />
+              </div>
+            )}
+
+            {activeTab === "audit" && (
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-semibold text-gray-900">Audit Logs</h3>
+                  <button
+                    onClick={() => setActiveTab("users")}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-lg"
+                  >
+                    Back to Admin
+                  </button>
+                </div>
+                <AdminAuditLogs />
               </div>
             )}
 
@@ -452,6 +594,7 @@ const AdminDashboardV2 = () => {
         </div>
       </div>
 
+      {/* Edit User Modal */}
       {editingUser && (
         <Modal onClose={() => setEditingUser(null)}>
           <div className="p-6">
@@ -488,6 +631,19 @@ const AdminDashboardV2 = () => {
                   type="email"
                   required
                 />
+              </div>
+              {/* Add Gender Dropdown */}
+              <div className="grid grid-cols-1 gap-4">
+                <select
+                  value={editForm.gender}
+                  onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
+                  className="rounded-2xl border border-sky-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                >
+                  <option value="">Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
               </div>
 
               <select
@@ -528,6 +684,7 @@ const AdminDashboardV2 = () => {
         </Modal>
       )}
 
+      {/* Reset Password Modal */}
       {resetUser && (
         <Modal onClose={() => setResetUser(null)}>
           <div className="p-6">
@@ -558,6 +715,7 @@ const AdminDashboardV2 = () => {
   );
 };
 
+// Helper Components (same as before)
 const DashboardHighlight = ({ label, value, description }) => (
   <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
     <p className="text-xs uppercase tracking-[0.25em] text-slate-300">{label}</p>
@@ -594,11 +752,10 @@ const StatCard = ({ title, value, icon, color }) => {
 const TabButton = ({ label, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
-      active
-        ? "bg-sky-700 text-white shadow"
-        : "bg-sky-50 text-sky-700 hover:bg-sky-100"
-    }`}
+    className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${active
+      ? "bg-sky-700 text-white shadow"
+      : "bg-sky-50 text-sky-700 hover:bg-sky-100"
+      }`}
   >
     {label}
   </button>
@@ -679,7 +836,7 @@ const Modal = ({ children, onClose }) => (
         onClick={onClose}
         className="absolute right-4 top-4 text-2xl font-bold leading-none text-slate-400 hover:text-slate-600"
       >
-        x
+        ×
       </button>
     </div>
   </div>

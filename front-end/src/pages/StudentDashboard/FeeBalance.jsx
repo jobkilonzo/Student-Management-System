@@ -43,30 +43,72 @@ const FeeBalance = () => {
     ["Notes", payment.notes || "Fee payment received"],
   ];
 
-  const handleDownloadReceipt = (payment) => {
-    const doc = new jsPDF();
-    const lines = buildReceiptLines(payment);
+const LOGO_PATH = "/uploads/school/logo.png"; // Path to your logo
 
-    doc.setFontSize(18);
-    doc.text(INSTITUTE_NAME, 20, 20);
-    doc.setFontSize(11);
-    doc.text(INSTITUTE_ADDRESS, 20, 30);
-    doc.text(`Phone: ${INSTITUTE_PHONE}`, 20, 38);
-    doc.text(`Email: ${INSTITUTE_EMAIL}`, 20, 46);
-    doc.setFontSize(14);
-    doc.text("Student Fee Receipt", 20, 58);
+const handleDownloadReceipt = (payment) => {
+  // Bank receipt size: width ~80mm, height auto (~200-250mm)
+  const doc = new jsPDF({
+    unit: "mm",
+    format: [80, 250], // width: 80mm, height: 250mm
+  });
 
-    let y = 72;
-    lines.forEach(([label, value]) => {
-      doc.setFont(undefined, "bold");
-      doc.text(`${label}:`, 20, y);
-      doc.setFont(undefined, "normal");
-      doc.text(String(value), 75, y);
-      y += 10;
-    });
+  const pageWidth = doc.internal.pageSize.getWidth();
 
-    doc.save(`receipt_${payment.id}.pdf`);
-  };
+  // =====================
+  // Header with logo & institute info
+  // =====================
+  const logoSize = 20; // smaller for narrow receipt
+  const startY = 10;
+
+  // Add logo
+  doc.addImage(LOGO_PATH, "PNG", pageWidth / 2 - logoSize / 2, startY, logoSize, logoSize);
+
+  // Institute Name
+  doc.setFontSize(12);
+  doc.setFont(undefined, "bold");
+  doc.text(INSTITUTE_NAME, pageWidth / 2, startY + logoSize + 5, { align: "center" });
+
+  // Institute Contact Info
+  doc.setFontSize(8);
+  doc.setFont(undefined, "normal");
+  doc.text(INSTITUTE_ADDRESS, pageWidth / 2, startY + logoSize + 10, { align: "center" });
+  doc.text(`Phone: ${INSTITUTE_PHONE}`, pageWidth / 2, startY + logoSize + 15, { align: "center" });
+  doc.text(`Email: ${INSTITUTE_EMAIL}`, pageWidth / 2, startY + logoSize + 20, { align: "center" });
+
+  // Receipt Title
+  doc.setFontSize(10);
+  doc.setFont(undefined, "bold");
+  doc.text("STUDENT FEE RECEIPT", pageWidth / 2, startY + logoSize + 30, { align: "center" });
+
+  // =====================
+  // Receipt Details Table
+  // =====================
+  const lines = buildReceiptLines(payment);
+  const tableStartY = startY + logoSize + 35;
+  let y = tableStartY;
+
+  doc.setFontSize(9);
+  const labelX = 5;
+  const valueX = 45;
+
+  lines.forEach(([label, value]) => {
+    doc.setFont(undefined, "bold");
+    doc.text(`${label}:`, labelX, y);
+    doc.setFont(undefined, "normal");
+    doc.text(String(value), valueX, y);
+    y += 6; // spacing between rows
+  });
+
+  // =====================
+  // Footer
+  // =====================
+  doc.setFontSize(8);
+  doc.setFont(undefined, "italic");
+  doc.text("Thank you for your payment!", pageWidth / 2, y + 10, { align: "center" });
+
+  // Save PDF
+  doc.save(`receipt_${payment.id}.pdf`);
+};
 
   return (
     <StudentPortalLayout

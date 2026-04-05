@@ -1,14 +1,28 @@
 import { useState, useEffect, useRef } from "react";
 import { makeRequest } from "../../../axios";
 import html2pdf from "html2pdf.js";
-import { useNavigate } from "react-router-dom"; // <-- import this
+import { useNavigate } from "react-router-dom";
+
+const moduleMap = {
+  1: "Module 1",
+  2: "Module 2",
+  3: "Module 3",
+};
+
+const termMap = {
+  1: "Term 1",
+  2: "Term 2",
+  3: "Term 3",
+};
+
 const GenerateTranscript = () => {
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState("");
+  const [selectedModule, setSelectedModule] = useState("");
+  const [selectedTerm, setSelectedTerm] = useState("");
   const [transcript, setTranscript] = useState(null);
   const [loading, setLoading] = useState(false);
-const navigate = useNavigate(); // <-- initialize navigate
-
+  const navigate = useNavigate();
   const transcriptRef = useRef();
 
   // Fetch students
@@ -26,13 +40,24 @@ const navigate = useNavigate(); // <-- initialize navigate
 
   // Generate transcript
   const handleGenerate = async () => {
-    if (!selectedStudent) return;
+    if (!selectedStudent || !selectedModule || !selectedTerm) return;
     setLoading(true);
     try {
       const res = await makeRequest.get(
-        `/registrar/transcript/transcript/${selectedStudent}`
+        `/registrar/transcript/transcript/${selectedStudent}?module=${selectedModule}&term=${selectedTerm}`
       );
-      setTranscript(res.data);
+      const data = res.data;
+
+      // Insert ABS for units with missing marks
+      data.marks = data.marks.map((m) => ({
+        ...m,
+        cat_mark: m.cat_mark != null ? m.cat_mark : "ABS",
+        exam_mark: m.exam_mark != null ? m.exam_mark : "ABS",
+        total: m.total != null ? m.total : "ABS",
+        grade: m.grade != null ? m.grade : "ABS",
+      }));
+
+      setTranscript(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -40,69 +65,50 @@ const navigate = useNavigate(); // <-- initialize navigate
     }
   };
 
-  // Download PDF safely
-// PDF-safe filename: first name + last name
-const downloadPDF = () => {
-  if (!transcript) return;
-  const element = transcriptRef.current;
+  // Download PDF
+  const downloadPDF = () => {
+    if (!transcript) return;
+    const element = transcriptRef.current;
+    element.style.backgroundColor = "#ffffff";
+    element.style.backgroundImage = "none";
 
-  // Force PDF-safe background
-  element.style.backgroundColor = "#ffffff";
-  element.style.backgroundImage = "none";
+    const name = transcript.student.name || "";
+    const fileName = name ? `${name}_transcript.pdf` : "student_transcript.pdf";
 
-  const name = transcript.student.name || "";
-  
-  const fileName =
-    name
-      ? `${name}_transcript.pdf`
-      : "student_transcript.pdf";
+    html2pdf()
+      .from(element)
+      .set({
+        margin: 0.5,
+        filename: fileName,
+        html2canvas: { scale: 2, logging: true, useCORS: true },
+        jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
+      })
+      .save()
+      .finally(() => {
+        element.style.backgroundColor = "";
+        element.style.backgroundImage = "";
+      });
+  };
 
-  html2pdf()
-    .from(element)
-    .set({
-      margin: 0.5,
-      filename: fileName,
-      html2canvas: { scale: 2, logging: true, useCORS: true },
-      jsPDF: { unit: "in", format: "a4", orientation: "portrait" },
-    })
-    .save()
-    .finally(() => {
-      element.style.backgroundColor = "";
-      element.style.backgroundImage = "";
-    });
-};
-  // Display full name
   const displayName = () => {
     const s = transcript?.student;
     if (!s) return "";
-    return (
-      [s.first_name, s.middle_name, s.last_name].filter(Boolean).join(" ") ||
-      s.name ||
-      "Unknown Student"
-    );
+    return [s.first_name, s.middle_name, s.last_name].filter(Boolean).join(" ") || s.name || "Unknown Student";
   };
 
   return (
     <div className="min-h-screen p-6" style={{ background: "radial-gradient(circle at top, #e0f2fe, #f0f9ff 35%, #f8fafc 78%)" }}>
-      {/* Back button */}
-      <button
-        onClick={() => navigate(-1)} // <-- go back to previous page
-        className="mb-4 rounded-xl px-4 py-2 text-white"
-        style={{ backgroundColor: "#334155", color: "#ffffff" }}
-      >
+      <button onClick={() => navigate(-1)} className="mb-4 rounded-xl px-4 py-2 text-white" style={{ backgroundColor: "#334155" }}>
         Back
       </button>
-      <h1 style={{ color: "#0f172a" }} className="mb-4 text-3xl font-bold">
+
+      <h1 className="mb-4 text-3xl font-bold" style={{ color: "#0f172a" }}>
         Generate Student Transcript
       </h1>
 
       {/* Controls */}
       <div className="mb-4 flex flex-wrap gap-2 rounded-[28px] border border-sky-100 bg-white/95 p-5 shadow-lg">
-        <select
-          className="rounded-xl border border-sky-200 p-3"
-          value={selectedStudent}
-          onChange={(e) => setSelectedStudent(e.target.value)}
-        >
+        <select className="rounded-xl border border-sky-200 p-3" value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)}>
           <option value="">Select Student</option>
           {students.map((s) => (
             <option key={s.id} value={s.id}>
@@ -111,53 +117,41 @@ const downloadPDF = () => {
           ))}
         </select>
 
-        <button
-          onClick={handleGenerate}
-          className="px-4 py-2 rounded"
-          style={{ backgroundColor: "#0284c7", color: "#ffffff" }}
-        >
+        <select className="rounded-xl border border-sky-200 p-3" value={selectedModule} onChange={(e) => setSelectedModule(Number(e.target.value))}>
+          <option value="">Select Module</option>
+          {Object.entries(moduleMap).map(([id, name]) => (
+            <option key={id} value={id}>{name}</option>
+          ))}
+        </select>
+
+        <select className="rounded-xl border border-sky-200 p-3" value={selectedTerm} onChange={(e) => setSelectedTerm(Number(e.target.value))}>
+          <option value="">Select Term</option>
+          {Object.entries(termMap).map(([id, name]) => (
+            <option key={id} value={id}>{name}</option>
+          ))}
+        </select>
+
+        <button onClick={handleGenerate} className="px-4 py-2 rounded" style={{ backgroundColor: "#0284c7", color: "#ffffff" }}>
           Generate
         </button>
 
         {transcript && (
           <>
-            <button
-              onClick={downloadPDF}
-              className="px-4 py-2 rounded"
-              style={{ backgroundColor: "#0369a1", color: "#ffffff" }}
-            >
-              Download PDF
-            </button>
-
-            <button
-              onClick={() => window.print()}
-              className="px-4 py-2 rounded"
-              style={{ backgroundColor: "#f59e0b", color: "#ffffff" }}
-            >
-              Print
-            </button>
+            <button onClick={downloadPDF} className="px-4 py-2 rounded" style={{ backgroundColor: "#0369a1", color: "#ffffff" }}>Download PDF</button>
+            <button onClick={() => window.print()} className="px-4 py-2 rounded" style={{ backgroundColor: "#f59e0b", color: "#ffffff" }}>Print</button>
           </>
         )}
       </div>
 
       {loading && <p>Loading transcript...</p>}
 
-      {/* Transcript */}
       {transcript && (
-        <div
-          ref={transcriptRef}
-          className="p-8 rounded-xl shadow-lg border"
-          style={{ backgroundColor: "#ffffff", backgroundImage: "none" }}
-        >
+        <div ref={transcriptRef} className="p-8 rounded-xl shadow-lg border" style={{ backgroundColor: "#ffffff", backgroundImage: "none" }}>
           {/* Header */}
-          <h2 style={{ color: "#1e293b" }} className="text-center text-2xl font-bold mb-2">
-            STUDENT TRANSCRIPT
-          </h2>
-
           <div className="text-center mb-4">
-            <h3 style={{ color: "#1e293b" }} className="font-semibold text-lg">
-              St John Paul II Institute
-            </h3>
+            <img src="/uploads/school/logo.png" alt="School Logo" className="mx-auto mb-2 w-24 h-24 object-contain" />
+            <h2 className="text-2xl font-bold mb-1" style={{ color: "#1e293b" }}>STUDENT TRANSCRIPT</h2>
+            <h3 className="font-semibold text-lg" style={{ color: "#1e293b" }}>St John Paul II Institute</h3>
             <p style={{ color: "#1e293b" }}>P.O. BOX 300 - 90200</p>
             <p style={{ color: "#1e293b" }}>Phone: 0706333977 / 0726607683</p>
             <p style={{ color: "#1e293b" }}>Email: stjohnpauliiinstitute@gmail.com</p>
@@ -166,10 +160,10 @@ const downloadPDF = () => {
           {/* Student Info */}
           <div className="mb-4" style={{ color: "#1e293b" }}>
             <p><strong>Name:</strong> {displayName()}</p>
-            <p><strong>Reg No:</strong> {transcript.student.regNo || "-"}</p>
-            <p><strong>Course:</strong> {transcript.student.courseName || transcript.student.course_id || "-"}</p>
-            <p><strong>Module:</strong> {transcript.student.module || "-"}</p>
-            <p><strong>Term:</strong> {transcript.student.term || "-"}</p>
+            {transcript.student.regNo && <p><strong>Reg No:</strong> {transcript.student.regNo}</p>}
+            {transcript.student.courseName && <p><strong>Course:</strong> {transcript.student.courseName}</p>}
+            {selectedModule && <p><strong>Module:</strong> {moduleMap[selectedModule]}</p>}
+            {selectedTerm && <p><strong>Term:</strong> {termMap[selectedTerm]}</p>}
           </div>
 
           {/* Marks Table */}
@@ -194,7 +188,7 @@ const downloadPDF = () => {
                   <td className="border p-2">{m.exam_mark}</td>
                   <td className="border p-2">{m.total}</td>
                   <td className="border p-2">{m.grade}</td>
-                  <td className="border p-2">{m.attendance || "-"}</td>
+                  <td className="border p-2">{m.attendance != null ? m.attendance : "ABS"}</td>
                 </tr>
               ))}
             </tbody>
@@ -202,16 +196,25 @@ const downloadPDF = () => {
 
           {/* Summary */}
           <div className="mt-4" style={{ color: "#1e293b" }}>
-            <p><strong>Overall Average:</strong> {transcript.summary.overallAverage || "-"}</p>
-            <p><strong>Final Grade:</strong> {transcript.summary.finalGrade || "-"}</p>
-            <p><strong>Remarks:</strong> {transcript.summary.remarks || "-"}</p>
+            {transcript.summary.overallAverage != null && <p><strong>Overall Average:</strong> {transcript.summary.overallAverage}</p>}
+            {transcript.summary.finalGrade && <p><strong>Final Grade:</strong> {transcript.summary.finalGrade}</p>}
+            {transcript.summary.remarks && <p><strong>Remarks:</strong> {transcript.summary.remarks}</p>}
           </div>
 
-          {/* Footer */}
+          {/* Footer with signatures */}
           <div className="mt-6" style={{ color: "#1e293b" }}>
-            <p><strong>Issued on:</strong> {transcript.summary.generatedAt || "-"}</p>
-            <br />
-            <p>Authorized Signatory: ___________________</p>
+            <p><strong>Issued on:</strong> {transcript.summary.generatedAt}</p>
+            <div className="flex justify-between mt-8">
+              <div className="text-center">
+                <p className="mb-6 font-bold">Manager</p>
+                <p>___________________</p>
+              </div>
+              <div className="text-center">
+                <p className="mb-6 font-bold">Senior Teacher</p>
+                <p>___________________</p>
+              </div>
+            </div>
+            <p className="mt-4 text-center italic text-sm">This is a system-generated transcript.</p>
           </div>
         </div>
       )}

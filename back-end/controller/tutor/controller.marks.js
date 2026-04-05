@@ -21,78 +21,6 @@ export const getTutorClasses = async (req, res) => {
   }
 };
 
-/** Get students + marks (auto-insert missing) */
-export const getStudentsForMarks = async (req, res) => {
-  const tutorId = req.user.id;
-  const unitId = Number(req.params.unitId);
-
-  try {
-    // 1. Get the tutor assignment for this unit
-    const [unitAssignRows] = await db.query(
-      `SELECT course_id, module FROM unit_assignments WHERE tutor_id=? AND unit_id=?`,
-      [tutorId, unitId]
-    );
-    if (!unitAssignRows.length) return res.status(404).json({ error: "Unit assignment not found" });
-
-    const courseId = Number(unitAssignRows[0].course_id);
-    const assignmentModule = unitAssignRows[0].module || null;
-
-    // 2. Get students for the current course/module stage only
-    const [students] = await db.query(
-      `
-        SELECT id
-        FROM students
-        WHERE course_id = ?
-          AND (? IS NULL OR ? = '' OR module = ?)
-      `,
-      [courseId, assignmentModule, assignmentModule, assignmentModule]
-    );
-
-    // 3. Auto-insert missing marks
-    if (students.length > 0) {
-      const values = students.map((s) => [s.id, unitId, 0, 0, 0, "-"]);
-      await db.query(
-        `INSERT INTO marks (student_id, unit_id, cat_mark, exam_mark, total, grade)
-         VALUES ? 
-         ON DUPLICATE KEY UPDATE student_id=student_id`,
-        [values]
-      );
-    }
-
-    // 4. Fetch students with marks for the active stage only
-    const [results] = await db.query(
-      `SELECT 
-        s.id,
-        CONCAT_WS(' ', s.first_name, NULLIF(s.middle_name, ''), s.last_name) AS name,
-        s.reg_no,
-        s.course_id,
-        s.module,
-        s.term,
-        COALESCE(m.cat_mark, 0) AS cat_mark,
-        COALESCE(m.exam_mark, 0) AS exam_mark,
-        COALESCE(m.total, 0) AS total,
-        COALESCE(m.grade, '-') AS grade
-       FROM students s
-       JOIN unit_assignments ua 
-         ON ua.unit_id = ? AND ua.tutor_id = ?
-       JOIN units u 
-         ON u.unit_id = ua.unit_id
-       LEFT JOIN marks m 
-         ON m.student_id = s.id AND m.unit_id = u.unit_id
-       WHERE s.course_id = ua.course_id
-         AND (ua.module IS NULL OR ua.module = '' OR s.module = ua.module)
-       ORDER BY s.reg_no`,
-      [unitId, tutorId]
-    );
-
-    res.json({ students: results });
-
-  } catch (err) {
-    console.error("Error fetching students for marks:", err);
-    res.status(500).json({ error: "Database query failed" });
-  }
-};
-
 /** Grade calculator */
 const getGrade = (total) => {
   if (total >= 70) return "A";
@@ -102,56 +30,139 @@ const getGrade = (total) => {
   return "F";
 };
 
-/** Save marks (bulk or single) */
+/** Get students + marks for a specific term */
+export const getStudentsForMarks = async (req, res) => {
+  const tutorId = req.user.id;
+  const unitId = Number(req.params.unitId);
+
+  try {
+    // 1. Get tutor assignment for this unit
+    const [unitAssignRows] = await db.query(
+      `SELECT course_id FROM unit_assignments WHERE tutor_id=? AND unit_id=?`,
+      [tutorId, unitId]
+    );
+    if (!unitAssignRows.length)
+      return res.status(404).json({ error: "Unit assignment not found" });
+
+    const courseId = Number(unitAssignRows[0].course_id);
+
+    // 2. Get students for this course (excluding soft-deleted)
+    const [results] = await db.query(
+      `SELECT 
+         s.id,
+         CONCAT_WS(' ', s.first_name, NULLIF(s.middle_name, ''), s.last_name) AS name,
+         s.reg_no,
+         s.course_id,
+         s.term AS student_term,
+         COALESCE(m.cat_mark, 0) AS cat_mark,
+         COALESCE(m.exam_mark, 0) AS exam_mark,
+         COALESCE(m.total, 0) AS total,
+         COALESCE(m.grade, '-') AS grade,
+         COALESCE(m.attendance, 0) AS attendance
+       FROM students s
+       LEFT JOIN marks m
+         ON m.student_id = s.id AND m.unit_id = ? AND m.term = s.term
+       WHERE s.course_id = ? AND s.deleted_at IS NULL
+       ORDER BY s.reg_no`,
+      [unitId, courseId]
+    );
+
+    res.json({ students: results });
+  } catch (err) {
+    console.error("Error fetching students for marks:", err);
+    res.status(500).json({ error: "Database query failed" });
+  }
+};
 export const saveMarks = async (req, res) => {
   const { unitId, marks } = req.body;
 
-  if (!unitId || !marks?.length) {
+  if (!unitId || !marks?.length) 
     return res.status(400).json({ error: "Missing data" });
-  }
-
-  const values = marks.map((m) => {
-    const cat = Number(m.cat_mark) || 0;
-    const exam = Number(m.exam_mark) || 0;
-    const total = cat + exam;
-    const grade = getGrade(total);
-    return [m.student_id, unitId, cat, exam, total, grade];
-  });
-
-  const query = `
-    INSERT INTO marks (student_id, unit_id, cat_mark, exam_mark, total, grade)
-    VALUES ?
-    ON DUPLICATE KEY UPDATE
-      cat_mark = VALUES(cat_mark),
-      exam_mark = VALUES(exam_mark),
-      total = VALUES(total),
-      grade = VALUES(grade)
-  `;
 
   try {
-    await db.query(query, [values]);
-    res.json({ message: "Marks saved successfully" });
+    const values = [];
+
+    for (const m of marks) {
+      // Fetch student module and term
+      const [[student]] = await db.query(
+        `SELECT id, term, module FROM students WHERE id=? AND deleted_at IS NULL`,
+        [m.student_id]
+      );
+
+      if (!student) continue; // skip invalid student
+
+      const cat = Number(m.cat_mark) || 0;
+      const exam = Number(m.exam_mark) || 0;
+      const total = cat + exam;
+      const attendance = Number(m.attendance) || 0;
+      const grade = getGrade(total); // attendance ignored here
+
+      values.push([
+        student.id,       // student_id
+        unitId,           // unit_id
+        student.term,     // term
+        cat,              // cat_mark
+        exam,             // exam_mark
+        total,            // total
+        grade,            // grade
+        0,                // is_locked default
+        student.module,   // module
+        attendance        // attendance
+      ]);
+    }
+
+    if (!values.length)
+      return res.status(400).json({ error: "No valid students to save marks" });
+
+    await db.query(
+      `INSERT INTO marks 
+      (student_id, unit_id, term, cat_mark, exam_mark, total, grade, is_locked, module, attendance)
+       VALUES ?
+       ON DUPLICATE KEY UPDATE
+         cat_mark = VALUES(cat_mark),
+         exam_mark = VALUES(exam_mark),
+         total = VALUES(total),
+         grade = VALUES(grade),
+         module = VALUES(module),
+         attendance = VALUES(attendance)`,
+      [values]
+    );
+
+    res.json({ message: "Marks and attendance saved successfully" });
+
   } catch (err) {
     console.error("Error saving marks:", err);
     res.status(500).json({ error: "Save failed" });
   }
 };
 
-/** Delete a student's mark */
-export const deleteMark = async (req, res) => {
-  const { unitId, studentId } = req.body;
+/** Reset a student's marks for a specific term */
+export const resetMark = async (req, res) => {
+  const { unitId, studentId, term } = req.body;
 
-  if (!unitId || !studentId) {
-    return res.status(400).json({ error: "Missing data" });
-  }
-
-  const query = "DELETE FROM marks WHERE unit_id = ? AND student_id = ?";
+  if (!unitId || !studentId || !term) return res.status(400).json({ error: "Missing data" });
+  if (![1, 2, 3].includes(term)) return res.status(400).json({ error: "Invalid term" });
 
   try {
-    await db.query(query, [unitId, studentId]);
-    res.json({ message: "Mark deleted successfully" });
+    const [[student]] = await db.query(
+      `SELECT id FROM students WHERE id=? AND deleted_at IS NULL`,
+      [studentId]
+    );
+    if (!student) return res.status(404).json({ error: "Student not found or deleted" });
+
+    const [result] = await db.query(
+      `UPDATE marks
+       SET cat_mark = 0, exam_mark = 0, total = 0, grade = '-'
+       WHERE student_id = ? AND unit_id = ? AND term = ?`,
+      [studentId, unitId, term]
+    );
+
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Mark not found" });
+
+    res.json({ message: "Mark reset successfully" });
+
   } catch (err) {
-    console.error("Error deleting mark:", err);
-    res.status(500).json({ error: "Delete failed" });
+    console.error("Error resetting mark:", err);
+    res.status(500).json({ error: "Reset failed" });
   }
 };

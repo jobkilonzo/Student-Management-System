@@ -30,6 +30,7 @@ export const getResults = async (req, res) => {
     const student = studentRows[0];
     const studentId = student.id;
 
+    // Get student progression history
     const [progressionRows] = await db.execute(
       `
         SELECT
@@ -47,6 +48,7 @@ export const getResults = async (req, res) => {
       [studentId]
     );
 
+    // Current stage
     const currentStage = {
       key: `current:${student.course_id}:${student.module || ""}:${student.term || ""}`,
       course_id: student.course_id,
@@ -74,6 +76,7 @@ export const getResults = async (req, res) => {
     const stages = [currentStage, ...historicalStages];
     const selectedStage = stages.find((stage) => stage.key === requestedStage) || currentStage;
 
+    // Query marks including module and term filtering
     let query = `
       SELECT 
         m.id,
@@ -83,9 +86,12 @@ export const getResults = async (req, res) => {
         m.grade,
         m.is_locked,
         m.created_at,
+        m.attendance,
+        m.module AS mark_module,
+        m.term AS mark_term,
         u.unit_code,
         u.unit_name,
-        u.module,
+        u.module AS unit_module,
         u.course_code,
         c.course_name
       FROM marks m
@@ -96,6 +102,7 @@ export const getResults = async (req, res) => {
     `;
     const params = [studentId, selectedStage.course_id];
 
+    // Filter by module if available
     if (selectedStage.module) {
       query += `
         AND (
@@ -106,6 +113,12 @@ export const getResults = async (req, res) => {
         )
       `;
       params.push(selectedStage.module);
+    }
+
+    // Filter by term if available
+    if (selectedStage.term) {
+      query += ` AND m.term = ?`;
+      params.push(selectedStage.term);
     }
 
     query += ` ORDER BY u.unit_code ASC`;

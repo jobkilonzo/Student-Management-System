@@ -21,7 +21,7 @@ const AddUnits = () => {
     const fetchCourse = async () => {
       try {
         const res = await makeRequest.get(`registrar/courses/${courseId}`);
-        setCourse(res.data);
+        setCourse(res.data); // res.data should include course_type
       } catch (err) {
         console.error("Error fetching course:", err);
       }
@@ -46,10 +46,25 @@ const AddUnits = () => {
   }, [courseId]);
 
   // =============================
+  // MODULE OPTIONS BASED ON COURSE TYPE
+  // =============================
+  const getModuleOptions = () => {
+    if (!course || !course.course_name) return [];
+    // Using course_name to determine type (adjust if you store course_type)
+    if (course.course_name.toLowerCase().includes("craft")) return [1, 2];
+    if (course.course_name.toLowerCase().includes("diploma")) return [1, 2, 3];
+    return [];
+  };
+
+  const moduleOptions = getModuleOptions();
+
+  // =============================
   // HANDLE FORM CHANGE
   // =============================
-  const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) => {
+    const value = e.target.name === "module" ? Number(e.target.value) : e.target.value;
+    setForm({ ...form, [e.target.name]: value });
+  };
 
   // =============================
   // ADD OR EDIT UNIT
@@ -165,14 +180,23 @@ const AddUnits = () => {
           className="rounded-xl border border-sky-200 p-3"
           disabled={loading}
         />
-        <input
+        <select
           name="module"
           value={form.module}
           onChange={handleChange}
-          placeholder="E.g Module 1"
+          required
           className="rounded-xl border border-sky-200 p-3"
-          disabled={loading}
-        />
+          disabled={loading || moduleOptions.length === 0}
+        >
+          <option value="" disabled>
+            Select Module
+          </option>
+          {moduleOptions.map((m) => (
+            <option key={m} value={m}>
+              Module {m}
+            </option>
+          ))}
+        </select>
         <div className="col-span-full flex gap-2">
           <button
             type="submit"
@@ -220,7 +244,7 @@ const AddUnits = () => {
                 >
                   <td className="px-4 py-2">{u.unit_code}</td>
                   <td className="px-4 py-2">{u.unit_name}</td>
-                  <td className="px-4 py-2">{u.module || "-"}</td>
+                  <td className="px-4 py-2">{u.module ? `Module ${u.module}` : "-"}</td>
                   <td className="px-4 py-2 flex gap-2 justify-center">
                     <button
                       onClick={() => handleEdit(u)}

@@ -19,19 +19,20 @@ const getGrade = (marks) => {
 // GET student profile
 export const getProfile = async (req, res) => {
   try {
-    const userId = req.user.id; // ✅ use ID
+    const userId = req.user.id;
 
     const query = `
       SELECT s.*, c.course_name, c.course_code
       FROM students s
       LEFT JOIN courses c ON s.course_id = c.course_id
       WHERE s.user_id = ?
+      AND s.deleted_at IS NULL
     `;
 
     const [results] = await db.execute(query, [userId]);
 
     if (results.length === 0) {
-      return res.status(404).json({ error: "Student not found" });
+      return res.status(404).json({ error: "Student not found or deleted" });
     }
 
     res.json(results[0]);
@@ -258,40 +259,56 @@ export const getStudentMarks = async (req, res) => {
   }
 };
 
-// UPDATE student marks
+// UPDATE student marks with validation, timestamp, and audit
 export const updateStudentMarks = async (req, res) => {
+  const connection = await db.getConnection();
+
   try {
+    await connection.beginTransaction();
+
     const userEmail = req.user.email;
-    const { unit_id, cat_marks, end_term_marks } = req.body;
+    const { unit_id, cat_mark, exam_mark } = req.body;
 
-    // Get student id
-    const [studentResults] = await db.execute("SELECT id FROM students WHERE email = ?", [userEmail]);
-    if (studentResults.length === 0) {
-      return res.status(404).json({ error: "Student not found" });
+    // Validate inputs
+    const cat = parseFloat(cat_mark);
+    const exam = parseFloat(exam_mark);
+
+    if (isNaN(cat) || cat < 0 || cat > 30) {
+      throw new Error("CAT mark must be a number between 0 and 30");
     }
-    const studentId = studentResults[0].id;
+    if (isNaN(exam) || exam < 0 || exam > 70) {
+      throw new Error("Exam mark must be a number between 0 and 70");
+    }
 
-    // Calculate total and grade
-    const total_marks = (parseFloat(cat_marks) || 0) + (parseFloat(end_term_marks) || 0);
-    const grade = getGrade(total_marks);
+    const { id: studentId } = await getStudentIdByEmail(userEmail);
 
-    // Update or insert marks
+    const total = cat + exam;
+    const grade = getGrade(total);
+
+    const now = moment().format("YYYY-MM-DD HH:mm:ss");
+
+    // Insert or update marks
     const query = `
-      INSERT INTO marks (student_id, unit_id, cat_marks, end_term_marks, total_marks, grade)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO marks (student_id, unit_id, cat_mark, exam_mark, total, grade, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
-      cat_marks = VALUES(cat_marks),
-      end_term_marks = VALUES(end_term_marks),
-      total_marks = VALUES(total_marks),
-      grade = VALUES(grade)
+        cat_mark = VALUES(cat_mark),
+        exam_mark = VALUES(exam_mark),
+        total = VALUES(total),
+        grade = VALUES(grade),
+        updated_at = NOW()
     `;
-    const values = [studentId, unit_id, cat_marks || null, end_term_marks || null, total_marks, grade];
 
-    await db.execute(query, values);
+    await connection.execute(query, [studentId, unit_id, cat, exam, total, grade, now]);
 
-    res.json({ success: true, message: "Marks updated successfully" });
+    await connection.commit();
+
+    res.json({ success: true, message: "Marks updated successfully", total, grade });
   } catch (err) {
+    await connection.rollback();
     console.error("Update Student Marks Error:", err);
     res.status(500).json({ error: err.message });
+  } finally {
+    connection.release();
   }
 };

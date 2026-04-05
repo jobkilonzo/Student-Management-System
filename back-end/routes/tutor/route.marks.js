@@ -3,7 +3,7 @@ import {
   getTutorClasses,
   getStudentsForMarks,
   saveMarks,
-  deleteMark
+  resetMark
 } from "../../controller/tutor/controller.marks.js";
 
 import { authenticateToken, authorizeRoles } from "../../middleware/auth.js";
@@ -17,12 +17,13 @@ router.use(authenticateToken, authorizeRoles('tutor'));
 router.get("/classes", getTutorClasses);
 
 // Fetch students + existing marks for a unit
+// Removed :term param because term is now taken from students table
 router.get("/students/:unitId", getStudentsForMarks);
 
 // Save marks (bulk or single) – transaction-safe
 router.post("/save", saveMarks);
 
-// Delete a student's mark – transaction-safe
-router.post("/delete", deleteMark);
+// Reset a student's mark to 0 – transaction-safe
+router.post("/reset", resetMark);
 
 export default router;

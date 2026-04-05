@@ -43,11 +43,11 @@ export const getStudentFinancials = async () => {
       s.createdAt,
       c.course_name,
       c.course_code,
-      COALESCE(cf.amount, 0) AS current_fee,
+      COALESCE(SUM(cf.amount), 0) AS current_fee,
       COALESCE(history.total_historical_fees, 0) AS historical_fee_total,
       COALESCE(payments.amount_paid, 0) AS amount_paid,
       GREATEST(
-        COALESCE(cf.amount, 0) + COALESCE(history.total_historical_fees, 0) - COALESCE(payments.amount_paid, 0),
+        COALESCE(SUM(cf.amount), 0) + COALESCE(history.total_historical_fees, 0) - COALESCE(payments.amount_paid, 0),
         0
       ) AS balance,
       payments.last_payment_date,
@@ -56,9 +56,7 @@ export const getStudentFinancials = async () => {
     LEFT JOIN courses c ON s.course_id = c.course_id
     LEFT JOIN course_fees cf ON s.course_id = cf.course_id
     LEFT JOIN (
-      SELECT
-        student_id,
-        SUM(fee_amount) AS total_historical_fees
+      SELECT student_id, SUM(fee_amount) AS total_historical_fees
       FROM student_progressions
       GROUP BY student_id
     ) history ON history.student_id = s.id
@@ -77,7 +75,8 @@ export const getStudentFinancials = async () => {
       FROM fee_payments fp
       GROUP BY fp.student_id
     ) payments ON payments.student_id = s.id
-    ORDER BY s.createdAt DESC, s.id DESC
+    GROUP BY s.id
+    ORDER BY s.createdAt DESC, s.id DESC;
   `;
 
   const [rows] = await db.execute(query);
@@ -86,11 +85,15 @@ export const getStudentFinancials = async () => {
     const currentFee = Number(row.current_fee || 0);
     const historicalFeeTotal = Number(row.historical_fee_total || 0);
     const totalFees = currentFee + historicalFeeTotal;
-    let status = "No Fee Set";
+    const amountPaid = Number(row.amount_paid || 0);
+    const balance = Number(row.balance || 0);
+    const lastPayment = Number(row.last_payment_amount || 0);
 
-    if (totalFees > 0 && Number(row.balance) === 0) {
+    // Determine payment status
+    let status = "No Fee Set";
+    if (totalFees > 0 && balance === 0) {
       status = "Cleared";
-    } else if (totalFees > 0 && Number(row.amount_paid) > 0) {
+    } else if (totalFees > 0 && amountPaid > 0) {
       status = "Partially Paid";
     } else if (totalFees > 0) {
       status = "Outstanding";
@@ -101,14 +104,13 @@ export const getStudentFinancials = async () => {
       current_fee: currentFee,
       historical_fee_total: historicalFeeTotal,
       total_fees: totalFees,
-      amount_paid: Number(row.amount_paid || 0),
-      balance: Number(row.balance || 0),
-      last_payment_amount: Number(row.last_payment_amount || 0),
+      amount_paid: amountPaid,
+      balance,
+      last_payment_amount: lastPayment,
       status,
     };
   });
 };
-
 export const getRecentFeePayments = async (limit = 5) => {
   const safeLimit = Number(limit) > 0 ? Number(limit) : 5;
   const query = `
@@ -136,44 +138,84 @@ export const getRecentFeePayments = async (limit = 5) => {
 };
 
 export const getCourseFeeSummary = async () => {
-  const query = `
-    SELECT
+  // 1. Get all courses + students count
+  const [courses] = await db.execute(`
+    SELECT 
       c.course_id,
-      c.course_code,
       c.course_name,
-      COALESCE(cf.amount, 0) AS fee_amount,
-      COUNT(DISTINCT s.id) AS total_students,
-      COALESCE(course_payments.total_collected, 0) AS total_collected
+      c.course_code,
+      COUNT(s.id) AS total_students
     FROM courses c
-    LEFT JOIN course_fees cf ON c.course_id = cf.course_id
-    LEFT JOIN students s ON c.course_id = s.course_id
-    LEFT JOIN (
-      SELECT
-        course_id,
-        SUM(amount_paid) AS total_collected
-      FROM fee_payments
-      GROUP BY course_id
-    ) course_payments ON c.course_id = course_payments.course_id
-    GROUP BY c.course_id, c.course_code, c.course_name, cf.amount, course_payments.total_collected
-    ORDER BY c.course_name ASC
-  `;
+    LEFT JOIN students s ON s.course_id = c.course_id
+    GROUP BY c.course_id
+  `);
 
-  const [rows] = await db.execute(query);
-  return rows.map((row) => {
-    const feeAmount = Number(row.fee_amount || 0);
-    const totalStudents = Number(row.total_students || 0);
-    const totalExpected = feeAmount * totalStudents;
-    const totalCollected = Number(row.total_collected || 0);
-    const totalOutstanding = Math.max(totalExpected - totalCollected, 0);
+  // 2. Get course fees (NOW includes fee types)
+  const [fees] = await db.execute(`
+    SELECT 
+      cf.course_id,
+      cf.term,
+      cf.amount,
+      cf.fee_type_id,
+      ft.name AS fee_type_name
+    FROM course_fees cf
+    JOIN fee_types ft ON ft.id = cf.fee_type_id
+  `);
+
+  // 3. Get payments
+  const [payments] = await db.execute(`
+    SELECT 
+      course_id,
+      SUM(amount_paid) AS total_collected
+    FROM fee_payments
+    GROUP BY course_id
+  `);
+
+  // Map payments
+  const paymentMap = {};
+  payments.forEach((p) => {
+    paymentMap[p.course_id] = Number(p.total_collected || 0);
+  });
+
+  // Map fees per course
+  const feeMap = {};
+  fees.forEach((f) => {
+    if (!feeMap[f.course_id]) feeMap[f.course_id] = [];
+
+    feeMap[f.course_id].push({
+      term: f.term,
+      amount: Number(f.amount),
+      fee_type_id: f.fee_type_id,
+      fee_type_name: f.fee_type_name,
+    });
+  });
+
+  // 4. Build final response
+  return courses.map((course) => {
+    const courseFees = feeMap[course.course_id] || [];
+
+    // Total fee per student = SUM of all fee types
+    const totalFeePerStudent = courseFees.reduce(
+      (sum, f) => sum + Number(f.amount || 0),
+      0
+    );
+
+    const totalExpected = totalFeePerStudent * course.total_students;
+    const totalCollected = paymentMap[course.course_id] || 0;
+    const totalOutstanding = totalExpected - totalCollected;
+
+    const collectionRate =
+      totalExpected > 0
+        ? ((totalCollected / totalExpected) * 100).toFixed(2)
+        : 0;
 
     return {
-      ...row,
-      fee_amount: feeAmount,
-      total_students: totalStudents,
+      ...course,
+      fees_per_term: courseFees,
       total_expected: totalExpected,
       total_collected: totalCollected,
       total_outstanding: totalOutstanding,
-      collection_rate: totalExpected ? Number(((totalCollected / totalExpected) * 100).toFixed(1)) : 0,
+      collection_rate: Number(collectionRate),
     };
   });
 };

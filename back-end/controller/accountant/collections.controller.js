@@ -1,5 +1,6 @@
 import { getCourseFeeSummary } from "./accountant.helpers.js";
 
+import db from "../../database/mysql_database.js";
 export const getCollections = async (_req, res) => {
   try {
     const courseSummary = await getCourseFeeSummary();
@@ -9,3 +10,5 @@ export const getCollections = async (_req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+
