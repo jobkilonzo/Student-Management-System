@@ -4,6 +4,7 @@ import { makeRequest } from "../../../axios";
 import toast, { Toaster } from "react-hot-toast";
 
 const ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer"];
+const GENDERS = ["male", "female", "other"];
 
 const UsersManagement = () => {
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ const UsersManagement = () => {
     password: "",
     role: "registrar",
     course_id: "",
+    gender: "",
   });
 
   useEffect(() => {
@@ -59,6 +61,7 @@ const UsersManagement = () => {
       password: "",
       role: "registrar",
       course_id: "",
+      gender: "",
     });
   };
 
@@ -73,6 +76,7 @@ const UsersManagement = () => {
           last_name: form.last_name,
           email: form.email,
           role: form.role,
+          gender: form.gender,
           ...(form.password ? { newPassword: form.password } : {}),
           course_id: form.role === "student" ? form.course_id : undefined,
         });
@@ -85,6 +89,7 @@ const UsersManagement = () => {
           email: form.email,
           password: form.password,
           role: form.role,
+          gender: form.gender,
         };
         if (form.role === "student") payload.course_id = form.course_id;
         await makeRequest.post("/auth/register", payload);
@@ -110,6 +115,7 @@ const UsersManagement = () => {
       password: "",
       role: user.role || "registrar",
       course_id: user.course_id || "",
+      gender: user.gender || "",
     });
   };
 
@@ -236,6 +242,21 @@ const UsersManagement = () => {
                     label: r.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase()),
                   }))}
                 />
+                <SelectField
+                  label="Gender"
+                  value={form.gender}
+                  onChange={(value) => setForm({ ...form, gender: value })}
+                  options={[
+                    { value: "", label: "Select Gender" },
+                    ...GENDERS.map((g) => ({
+                      value: g,
+                      label: g.charAt(0).toUpperCase() + g.slice(1),
+                    })),
+                  ]}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
                   label={editingUser ? "New Password" : "Password"}
                   type="password"
@@ -316,6 +337,7 @@ const UsersManagement = () => {
                       <tr>
                         <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Name</th>
                         <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Email</th>
+                        <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Gender</th>
                         <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Role</th>
                         <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Created</th>
                         <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Actions</th>
@@ -324,10 +346,10 @@ const UsersManagement = () => {
                     <tbody className="divide-y divide-slate-200">
                       {filteredUsers.length === 0 ? (
                         <tr>
-                          <td colSpan="5" className="p-8 text-center text-slate-500">
+                          <td colSpan="6" className="p-8 text-center text-slate-500">
                             No users found.
-                          </td>
-                        </tr>
+                           </td>
+                         </tr>
                       ) : (
                         filteredUsers.map((user) => (
                           <tr key={user.id} className="bg-white transition hover:bg-sky-50/60">
@@ -335,14 +357,23 @@ const UsersManagement = () => {
                               <div className="font-semibold text-slate-900">
                                 {`${user.first_name || ""} ${user.middle_name || ""} ${user.last_name || ""}`.trim()}
                               </div>
-                            </td>
+                             </td>
                             <td className="px-5 py-4 text-slate-600">{user.email}</td>
                             <td className="px-5 py-4">
+                              {user.gender ? (
+                                <span className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                                  {user.gender.charAt(0).toUpperCase() + user.gender.slice(1)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                             </td>
+                            <td className="px-5 py-4">
                               <RolePill role={user.role} />
-                            </td>
+                             </td>
                             <td className="px-5 py-4 text-slate-600">
                               {new Date(user.created_at || user.createdAt || "").toLocaleString()}
-                            </td>
+                             </td>
                             <td className="px-5 py-4">
                               <div className="flex flex-wrap gap-2">
                                 <button
@@ -358,8 +389,8 @@ const UsersManagement = () => {
                                   Delete
                                 </button>
                               </div>
-                            </td>
-                          </tr>
+                             </td>
+                           </tr>
                         ))
                       )}
                     </tbody>

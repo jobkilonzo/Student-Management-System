@@ -29,7 +29,7 @@ const RegistrarReports = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log("Fetching reports data...");
+    
         
         const [coursesRes, studentsRes] = await Promise.all([
           makeRequest.get("/registrar/courses/"),
@@ -39,8 +39,7 @@ const RegistrarReports = () => {
         const coursesData = coursesRes.data || [];
         const studentsData = studentsRes.data || [];
         
-        console.log("Courses data:", coursesData);
-        console.log("Students data:", studentsData);
+     
         
         setCourses(coursesData);
         setStudents(studentsData);
@@ -90,8 +89,7 @@ const RegistrarReports = () => {
       value: genderCounts[gender]
     }));
 
-    console.log("Gender distribution:", genderDist);
-
+   
     // Course distribution
     const courseDist = coursesData.map(course => {
       const count = studentsData.filter(s => s.course_id === course.course_id).length;
@@ -102,8 +100,6 @@ const RegistrarReports = () => {
         percentage: studentsData.length ? ((count / studentsData.length) * 100).toFixed(1) : 0
       };
     }).sort((a, b) => b.count - a.count);
-
-    console.log("Course distribution:", courseDist);
 
     // Module distribution
     const moduleCounts = {};

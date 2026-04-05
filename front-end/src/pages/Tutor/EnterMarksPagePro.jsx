@@ -11,6 +11,7 @@ const EnterMarksPagePro = () => {
   const [editing, setEditing] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [originalMarks, setOriginalMarks] = useState({});
 
   useEffect(() => {
     const fetchUnits = async () => {
@@ -27,6 +28,17 @@ const EnterMarksPagePro = () => {
     fetchUnits();
   }, []);
 
+  const isEdited = (studentId) => {
+    if (!marks[studentId] || !originalMarks[studentId]) return false;
+    return (
+      marks[studentId].cat_mark !== originalMarks[studentId].cat_mark ||
+      marks[studentId].exam_mark !== originalMarks[studentId].exam_mark ||
+      marks[studentId].attendance !== originalMarks[studentId].attendance
+    );
+  };
+
+  const anyEdited = () => students.some(student => isEdited(student.id));
+
   const handleEnterMarks = async (unitId) => {
     try {
       const res = await makeRequest.get(`/marks/students/${unitId}`);
@@ -34,19 +46,30 @@ const EnterMarksPagePro = () => {
       setStudents(studentsData);
       setSelectedUnit(unitId);
 
+      const origMarks = {};
       const initialMarks = {};
       const initialEditing = {};
+
       studentsData.forEach((student) => {
+        origMarks[student.id] = {
+          cat_mark: student.cat_mark || 0,
+          exam_mark: student.exam_mark || 0,
+          attendance: student.attendance || 0,
+        };
         initialMarks[student.id] = {
           cat_mark: student.cat_mark || 0,
           exam_mark: student.exam_mark || 0,
+          attendance: student.attendance || 0,
           total: student.total || 0,
           grade: student.grade || "-",
         };
-        initialEditing[student.id] = true;
+        initialEditing[student.id] = student.cat_mark === 0 && student.exam_mark === 0;
       });
+
+      setOriginalMarks(origMarks);
       setMarks(initialMarks);
       setEditing(initialEditing);
+
     } catch (err) {
       console.error("Failed to fetch students:", err);
       alert("Error fetching students.");
@@ -66,15 +89,17 @@ const EnterMarksPagePro = () => {
   const handleChange = (id, field, value) => {
     let cat = field === "cat_mark" ? Number(value) : Number(marks[id]?.cat_mark || 0);
     let exam = field === "exam_mark" ? Number(value) : Number(marks[id]?.exam_mark || 0);
+    let attendance = field === "attendance" ? Number(value) : Number(marks[id]?.attendance || 0);
 
     cat = Math.max(0, Math.min(cat, 30));
     exam = Math.max(0, Math.min(exam, 70));
+    attendance = Math.max(0, Math.min(attendance, 100));
 
     const { total, grade } = calculate(cat, exam);
 
     setMarks((prev) => ({
       ...prev,
-      [id]: { cat_mark: cat, exam_mark: exam, total, grade },
+      [id]: { cat_mark: cat, exam_mark: exam, attendance, total, grade },
     }));
   };
 
@@ -84,10 +109,12 @@ const EnterMarksPagePro = () => {
     try {
       await makeRequest.post("/marks/save", {
         unitId: selectedUnit,
+        term: Number(students[0]?.module || 1),
         marks: Object.keys(marks).map((id) => ({
-          student_id: id,
+          student_id: Number(id),
           cat_mark: marks[id].cat_mark,
           exam_mark: marks[id].exam_mark,
+          attendance: marks[id].attendance,
         })),
       });
       alert("Marks saved successfully!");
@@ -103,11 +130,13 @@ const EnterMarksPagePro = () => {
     try {
       await makeRequest.post("/marks/save", {
         unitId: selectedUnit,
+        term: Number(students.find(s => s.id === studentId)?.module || 1),
         marks: [
           {
-            student_id: studentId,
+            student_id: Number(studentId),
             cat_mark: marks[studentId].cat_mark,
             exam_mark: marks[studentId].exam_mark,
+            attendance: marks[studentId].attendance,
           },
         ],
       });
@@ -119,20 +148,20 @@ const EnterMarksPagePro = () => {
     }
   };
 
-  const handleDelete = async (studentId) => {
-    if (!selectedUnit || !window.confirm("Delete this student's marks?")) return;
+  const handleReset = async (studentId) => {
+    if (!selectedUnit || !window.confirm("Reset this student's marks?")) return;
     try {
-      await makeRequest.post("/marks/delete", { unitId: selectedUnit, studentId });
+      await makeRequest.post("/marks/reset", { unitId: selectedUnit, studentId });
       setMarks((prev) => {
         const updated = { ...prev };
         delete updated[studentId];
         return updated;
       });
       setStudents((prev) => prev.filter((student) => student.id !== studentId));
-      alert("Marks deleted successfully!");
+      alert("Marks reset successfully!");
     } catch (err) {
-      console.error("Delete error:", err);
-      alert("Failed to delete marks.");
+      console.error("reset error:", err);
+      alert("Failed to reset marks.");
     }
   };
 
@@ -150,6 +179,7 @@ const EnterMarksPagePro = () => {
     return (
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#eff6ff_35%,_#f8fafc_70%)] p-8">
         <div className="mx-auto max-w-7xl space-y-8">
+          {/* Units List Section */}
           <section className="relative overflow-hidden rounded-[30px] border border-sky-200/80 bg-gradient-to-br from-sky-700 via-sky-600 to-cyan-500 px-6 py-8 text-white shadow-[0_24px_70px_-35px_rgba(14,116,144,0.58)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.24),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(186,230,253,0.25),_transparent_32%)]" />
             <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -212,6 +242,7 @@ const EnterMarksPagePro = () => {
     );
   }
 
+  // ==================== Marks Table ====================
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#eff6ff_35%,_#f8fafc_70%)] p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -268,6 +299,7 @@ const EnterMarksPagePro = () => {
                       <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Name</th>
                       <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">CAT (30)</th>
                       <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Exam (70)</th>
+                      <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Attendance (%)</th>
                       <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Total</th>
                       <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Grade</th>
                       <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Actions</th>
@@ -296,6 +328,15 @@ const EnterMarksPagePro = () => {
                             onChange={(e) => handleChange(student.id, "exam_mark", e.target.value)}
                           />
                         </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            className="w-full rounded-xl border border-sky-200 px-3 py-2 text-center outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
+                            disabled={!editing[student.id]}
+                            value={marks[student.id]?.attendance ?? ""}
+                            onChange={(e) => handleChange(student.id, "attendance", e.target.value)}
+                          />
+                        </td>
                         <td className="px-4 py-3 text-center font-semibold text-slate-900">{marks[student.id]?.total ?? 0}</td>
                         <td className="px-4 py-3 text-center">
                           <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -314,16 +355,20 @@ const EnterMarksPagePro = () => {
                             ) : (
                               <button
                                 onClick={() => handleSaveOne(student.id)}
-                                className="rounded-xl bg-sky-700 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-sky-800"
+                                disabled={!isEdited(student.id)}
+                                className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${isEdited(student.id)
+                                  ? "bg-sky-700 text-white hover:bg-sky-800"
+                                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                }`}
                               >
                                 Save
                               </button>
                             )}
                             <button
-                              onClick={() => handleDelete(student.id)}
-                              className="rounded-xl bg-rose-100 px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-200"
+                              onClick={() => handleReset(student.id)}
+                              className="rounded-xl bg-red-100 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-200"
                             >
-                              Delete
+                              Reset
                             </button>
                           </div>
                         </td>
@@ -334,11 +379,14 @@ const EnterMarksPagePro = () => {
               </div>
             </div>
 
-            <div className="mt-4 flex gap-3">
+            <div className="mt-6 flex justify-end">
               <button
                 onClick={handleSaveAll}
-                disabled={saving}
-                className="rounded-2xl bg-sky-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:opacity-50"
+                disabled={!anyEdited() || saving}
+                className={`rounded-2xl px-6 py-3 text-white font-semibold transition ${anyEdited()
+                  ? "bg-sky-700 hover:bg-sky-800"
+                  : "bg-gray-300 cursor-not-allowed"
+                }`}
               >
                 {saving ? "Saving..." : "Save All"}
               </button>

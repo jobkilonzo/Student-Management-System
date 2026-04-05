@@ -14,7 +14,7 @@ const TutorDashboardPro = () => {
       try {
         const response = await makeRequest.get("/auth/me");
         const userData = response.data;
-        const fullName = [userData?.user?.first_name, userData?.user?.middle_name, userData?.user?.last_name]
+        const fullName = [userData?.user?.first_name]
           .filter(Boolean)
           .join(" ");
         setUser({ name: fullName || userData?.user?.first_name || "Tutor" });

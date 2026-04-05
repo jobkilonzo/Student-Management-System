@@ -82,6 +82,8 @@ export const getCourseById = async (req, res) => {
   }
 };
 
+
+
 // UPDATE course
 export const updateCourse = async (req, res) => {
   try {

@@ -44,6 +44,59 @@ const AttendancePagePro = () => {
     }
   };
 
+const handleViewAttendance = async (unitId, date = null) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const res = await makeRequest.get(
+      `/attendance/unit/${unitId}/attendance/${date || today}`
+    );
+    const attendanceData = res.data.attendance || [];
+
+    if (!attendanceData.length) {
+      alert("No attendance found for this class on this date.");
+      return;
+    }
+
+    // Map API data to match your student table structure
+    const studentsWithStatus = attendanceData.map((student) => ({
+      id: student.student_id,
+      reg_no: student.reg_no,
+      first_name: student.name.split(" ")[0] || "",
+      last_name: student.name.split(" ").slice(1).join(" ") || "",
+      status: student.status || "Absent",
+    }));
+
+    setStudents(studentsWithStatus);
+
+    // Optional: set selected class if you want title
+    const cls = classes.find((c) => c.unit_id === unitId);
+    setSelectedClass(cls || { subject: "Unknown" });
+
+    setMarking(true); // show the table
+  } catch (err) {
+    console.error("Failed to fetch attendance:", err);
+    alert("Failed to fetch attendance. Try again.");
+  }
+};
+
+ // Download ALL attendance
+const handleDownloadAllAttendance = async (unitId) => {
+  try {
+    const res = await makeRequest.get(
+      `/attendance/unit/${unitId}/attendance/download`,
+      { responseType: "blob" }
+    );
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `attendance_${unitId}_all_days.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch (err) {
+    console.error("Failed to download all attendance:", err);
+  }
+};
   const handleSubmitAttendance = async () => {
     if (!selectedClass) return;
 
@@ -106,6 +159,7 @@ const AttendancePagePro = () => {
                 >
                   Back to Tutor Dashboard
                 </button>
+
                 <div className="rounded-2xl bg-white/15 px-4 py-3 text-sm font-semibold text-white">
                   {classes.length} classes
                 </div>
@@ -133,12 +187,26 @@ const AttendancePagePro = () => {
                       Class
                     </div>
                   </div>
-                  <button
-                    className="mt-6 w-full rounded-2xl bg-sky-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-800"
-                    onClick={() => handleMarkAttendance(cls)}
-                  >
-                    Mark Attendance
-                  </button>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
+                      onClick={() => handleViewAttendance(cls.unit_id)}
+                    >
+                      View Attendance
+                    </button>
+                    <button
+                      className="rounded-2xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700"
+                      onClick={() => handleDownloadAllAttendance(cls.unit_id)}
+                    >
+                      Download CSV
+                    </button>
+                    <button
+                      className="mt-6 w-full rounded-2xl bg-sky-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-800"
+                      onClick={() => handleMarkAttendance(cls)}
+                    >
+                      Mark Attendance
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
