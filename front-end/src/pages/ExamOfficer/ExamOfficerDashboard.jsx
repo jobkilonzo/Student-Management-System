@@ -1,19 +1,42 @@
 import { useNavigate } from "react-router-dom";
+import { makeRequest } from "../../../axios";
 
 const ExamOfficerDashboard = () => {
   const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await makeRequest.post("/auth/logout");
+    } catch {
+      // ignore
+    } finally {
+      localStorage.removeItem("sms_token");
+      localStorage.removeItem("sms_role");
+      localStorage.removeItem("sms_user");
+      localStorage.removeItem("sms_must_change_password");
+      navigate("/login");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 p-6">
       <div className="bg-white rounded-xl shadow-md p-6 max-w-5xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Examination Officer Dashboard</h1>
-          <button
-            onClick={() => navigate("/login")}
-            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg"
-          >
-            Logout
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate("/account")}
+              className="bg-white text-slate-800 px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50"
+            >
+              My Account
+            </button>
+            <button
+              onClick={handleLogout}
+              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         <p className="text-gray-600 mb-6">
@@ -34,7 +57,15 @@ const ExamOfficerDashboard = () => {
             onClick={() => navigate("/exam-officer/review-marks")}
           >
             <h2 className="text-xl font-semibold">Review Marks</h2>
-            <p className="text-gray-600">Approve or query tutor-entered marks before release.</p>
+            <p className="text-gray-600">Enter, edit, export, bulk upload, and release marks.</p>
+          </div>
+
+          <div
+            className="bg-blue-50 border border-blue-200 rounded-lg p-5 cursor-pointer hover:border-blue-400"
+            onClick={() => navigate("/exam-officer/attendance")}
+          >
+            <h2 className="text-xl font-semibold">Attendance</h2>
+            <p className="text-gray-600">Take and review attendance for assigned units.</p>
           </div>
         </div>
       </div>

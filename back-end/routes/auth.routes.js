@@ -16,14 +16,36 @@ import {
   searchUsers,
   getUserStatistics,
   getUserById,
-  checkUserDeleted
+  checkUserDeleted,
+  changePassword,
+  updateMyProfile,
+  uploadMyPassport
 } from "../controller/auth.controller.js";
 import { authenticateToken, authorizeRoles } from "../middleware/auth.js";
+import multer from "multer";
+import fs from "fs";
 
 const router = Router();
 
 // Middleware to check if user is deleted (applies to all protected routes)
 const checkUserStatus = [authenticateToken, checkUserDeleted];
+
+// Passport upload (all roles)
+const passportStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    try {
+      fs.mkdirSync("uploads/passports", { recursive: true });
+    } catch {
+      // ignore
+    }
+    cb(null, "uploads/passports");
+  },
+  filename: (req, file, cb) => {
+    const safeOriginal = (file.originalname || "").replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `passport_${req.user?.id || "user"}_${Date.now()}_${safeOriginal}`);
+  },
+});
+const uploadPassport = multer({ storage: passportStorage });
 
 /* =========================
    PUBLIC ROUTES
@@ -36,6 +58,9 @@ router.post("/login", login);
 // Auth routes
 router.post("/logout", checkUserStatus, logout);
 router.get("/me", checkUserStatus, getCurrentUser);
+router.put("/profile", checkUserStatus, updateMyProfile);
+router.post("/change-password", checkUserStatus, changePassword);
+router.put("/passport", checkUserStatus, uploadPassport.single("passport"), uploadMyPassport);
 
 // User registration - Admin only
 router.post("/register", authenticateToken, authorizeRoles("admin"), registerUser);

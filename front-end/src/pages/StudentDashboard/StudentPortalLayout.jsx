@@ -49,6 +49,12 @@ const StudentPortalLayout = ({
                 Dashboard Home
               </button>
               <button
+                onClick={() => navigate("/account")}
+                className="rounded-2xl border border-white/30 bg-white/15 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/25"
+              >
+                My Account
+              </button>
+              <button
                 onClick={handleLogout}
                 className="rounded-2xl bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-600"
               >

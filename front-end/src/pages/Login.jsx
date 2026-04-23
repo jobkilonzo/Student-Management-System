@@ -28,10 +28,16 @@ const Login = () => {
 
     try {
       const res = await makeRequest.post("/auth/login", form);
-      const { token, user } = res.data;
+      const { token, user, must_change_password } = res.data;
 
       localStorage.setItem("sms_token", token);
       localStorage.setItem("sms_role", user.role);
+      localStorage.setItem("sms_must_change_password", String(Boolean(must_change_password)));
+
+      if (must_change_password) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
 
       const redirect = roleRedirect[user.role] || "/login";
       navigate(redirect, { replace: true });

@@ -4,22 +4,38 @@ import moment from "moment";
 // CREATE course
 export const addCourse = async (req, res) => {
   try {
-    const { course_code, course_name } = req.body;
-    if (!course_code || !course_name) {
-      return res.status(400).json({ error: "Course code and course name are required" });
+    const { course_code, course_name, course_type } = req.body;
+    
+    // Validate required fields
+    if (!course_code || !course_name || !course_type) {
+      return res.status(400).json({ 
+        error: "Course code, course name, and course type are required" 
+      });
+    }
+
+    // Validate course_type value
+    const validCourseTypes = ['non_modular', 'stage_based', 'modular', 'level_based', 'grade_based'];
+    if (!validCourseTypes.includes(course_type)) {
+      return res.status(400).json({ 
+        error: "Invalid course type. Must be one of: " + validCourseTypes.join(', ') 
+      });
     }
 
     // Check if course already exists
-    const [existing] = await db.execute("SELECT course_id FROM courses WHERE course_code = ?", [course_code]);
+    const [existing] = await db.execute(
+      "SELECT course_id FROM courses WHERE course_code = ?", 
+      [course_code]
+    );
+    
     if (existing.length > 0) {
       return res.status(409).json({ error: "Course with this code already exists" });
     }
 
     const insertQuery = `
-      INSERT INTO courses(course_code, course_name, createdAt)
-      VALUES (?, ?, ?)
+      INSERT INTO courses(course_code, course_name, course_type, createdAt)
+      VALUES (?, ?, ?, ?)
     `;
-    const values = [course_code, course_name, moment().format("YYYY-MM-DD HH:mm:ss")];
+    const values = [course_code, course_name, course_type, moment().format("YYYY-MM-DD HH:mm:ss")];
     const [result] = await db.execute(insertQuery, values);
 
     res.status(201).json({
@@ -55,7 +71,9 @@ export const getDashboardStats = async (req, res) => {
 // GET all courses
 export const getCourses = async (req, res) => {
   try {
-    const [results] = await db.execute("SELECT course_id, course_code, course_name FROM courses");
+    const [results] = await db.execute(
+      "SELECT course_id, course_code, course_name, course_type FROM courses"
+    );
     res.json(results);
   } catch (err) {
     console.error(err);
@@ -64,50 +82,70 @@ export const getCourses = async (req, res) => {
 };
 
 // GET course by ID
+// In your course fetching endpoint, add the course_type mapping
 export const getCourseById = async (req, res) => {
   try {
-    const [results] = await db.execute(
-      "SELECT course_id, course_code, course_name FROM courses WHERE course_id = ?",
-      [req.params.id]
-    );
-
-    if (results.length === 0) {
-      return res.status(404).json({ error: "Course not found" });
+    const { id } = req.params;
+    const [rows] = await db.execute("SELECT * FROM courses WHERE course_id = ?", [id]);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Course not found" });
     }
-
-    res.json(results[0]);
+    
+    const course = rows[0];
+    
+    // Map your database values to frontend-friendly values
+    if (course.course_type === "non_modular") {
+      course.course_type_mapped = "modular";
+    } else if (course.course_type === "stage_based") {
+      course.course_type_mapped = "stage";
+    } else {
+      course.course_type_mapped = course.course_type;
+    }
+    
+    res.json(course);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    console.error("Get Course By ID Error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
-
-
 
 // UPDATE course
 export const updateCourse = async (req, res) => {
   try {
-    const { course_code, course_name } = req.body;
+    const { course_code, course_name, course_type } = req.body;
     const { id } = req.params;
 
-    if (!course_code || !course_name) {
-      return res.status(400).json({ error: "Course code and course name are required" });
+    if (!course_code || !course_name || !course_type) {
+      return res.status(400).json({ 
+        error: "Course code, course name, and course type are required" 
+      });
     }
 
+    // Validate course_type value
+    const validCourseTypes = ['non_modular', 'stage_based', 'modular', 'level_based', 'grade_based'];
+    if (!validCourseTypes.includes(course_type)) {
+      return res.status(400).json({ 
+        error: "Invalid course type. Must be one of: " + validCourseTypes.join(', ') 
+      });
+    }
+
+    // Check if another course with same code exists
     const [existing] = await db.execute(
       "SELECT course_id FROM courses WHERE course_code = ? AND course_id != ?",
       [course_code, id]
     );
+    
     if (existing.length > 0) {
       return res.status(409).json({ error: "Another course with this code already exists" });
     }
 
     const updateQuery = `
       UPDATE courses
-      SET course_code = ?, course_name = ?, updatedAt = ?
+      SET course_code = ?, course_name = ?, course_type = ?, updatedAt = ?
       WHERE course_id = ?
     `;
-    const values = [course_code, course_name, moment().format("YYYY-MM-DD HH:mm:ss"), id];
+    const values = [course_code, course_name, course_type, moment().format("YYYY-MM-DD HH:mm:ss"), id];
     const [result] = await db.execute(updateQuery, values);
 
     if (result.affectedRows === 0) {
@@ -124,8 +162,28 @@ export const updateCourse = async (req, res) => {
 // DELETE course
 export const deleteCourse = async (req, res) => {
   try {
-    const [result] = await db.execute("DELETE FROM courses WHERE course_id = ?", [req.params.id]);
-    res.json({ success: true, message: "Course deleted" });
+    // Optional: Check if course has any dependencies (units, enrollments, etc.)
+    const [dependencies] = await db.execute(
+      "SELECT COUNT(*) as count FROM units WHERE course_id = ?",
+      [req.params.id]
+    );
+    
+    if (dependencies[0].count > 0) {
+      return res.status(409).json({ 
+        error: "Cannot delete course with existing units. Remove associated units first." 
+      });
+    }
+
+    const [result] = await db.execute(
+      "DELETE FROM courses WHERE course_id = ?", 
+      [req.params.id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+    
+    res.json({ success: true, message: "Course deleted successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

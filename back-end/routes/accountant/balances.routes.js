@@ -5,7 +5,7 @@ import { getStudentBalances } from "../../controller/accountant/balances.control
 const router = express.Router();
 
 router.use(authenticateToken);
-router.use(authorizeRoles("accountant"));
+router.use(authorizeRoles("accountant", "secretary"));
 
 router.get("/student-balances", getStudentBalances);
 

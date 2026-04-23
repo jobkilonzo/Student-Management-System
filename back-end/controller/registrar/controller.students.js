@@ -163,79 +163,42 @@ export const updateStudent = async (req, res) => {
     const userId = student.user_id;
     const currentCourseId = Number(student.course_id);
     const nextCourseId = Number(course_id);
-    const currentModule = String(student.module || "");
-    const nextModule = String(module || "");
-    const currentTerm = String(student.term || "");
-    const nextTerm = String(term || "");
+    
+    // Convert module and term to numbers
+    const currentModule = student.module !== null && student.module !== undefined ? Number(student.module) : null;
+    const nextModule = module !== null && module !== undefined && module !== '' ? Number(module) : null;
+    const currentTerm = student.term !== null && student.term !== undefined ? Number(student.term) : null;
+    const nextTerm = term !== null && term !== undefined && term !== '' ? Number(term) : null;
 
-    // STRICT comparison - check if ANY of these changed
+    // STRICT comparison
     const courseChanged = currentCourseId !== nextCourseId;
     const moduleChanged = currentModule !== nextModule;
     const termChanged = currentTerm !== nextTerm;
     const academicStageChanged = courseChanged || moduleChanged || termChanged;
 
-    // Detailed logging for debugging
+    // Detailed logging
     console.log("\n=== STUDENT UPDATE DEBUG ===");
     console.log(`Student ID: ${id}`);
     console.log(`Course: ${currentCourseId} → ${nextCourseId} (Changed: ${courseChanged})`);
-    console.log(`Module: "${currentModule}" → "${nextModule}" (Changed: ${moduleChanged})`);
-    console.log(`Term: "${currentTerm}" → "${nextTerm}" (Changed: ${termChanged})`);
+    console.log(`Module: ${currentModule} → ${nextModule} (Changed: ${moduleChanged})`);
+    console.log(`Term: ${currentTerm} → ${nextTerm} (Changed: ${termChanged})`);
     console.log(`Academic Stage Changed: ${academicStageChanged}`);
-    console.log(`Request body:`, JSON.stringify(body, null, 2));
     console.log("=============================\n");
 
-    // ------------- STEP 1: Record Progression (ONLY if academic stage changed) -------------
-    if (academicStageChanged) {
-      console.log(`✅ Academic stage changed! Recording progression for student ${id}...`);
-      
-      // Get current course details for history
-      const [historySnapshotRows] = await connection.execute(
-        `SELECT c.course_id, c.course_code, c.course_name,
-                COALESCE(SUM(cf.amount),0) AS fee_amount
-         FROM courses c
-         LEFT JOIN course_fees cf ON c.course_id = cf.course_id AND cf.module = ? AND cf.term = ?
-         WHERE c.course_id = ?
-         GROUP BY c.course_id`,
-        [currentModule, currentTerm, currentCourseId]
-      );
+    const toNull = (value) => {
+      return value === undefined || value === '' ? null : value;
+    };
 
-      const historySnapshot = historySnapshotRows[0];
-      if (historySnapshot) {
-        const insertResult = await connection.execute(
-          `INSERT INTO student_progressions
-           (student_id, course_id, course_code, course_name, module, term, fee_amount, changed_by, archived_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            id,
-            historySnapshot.course_id,
-            historySnapshot.course_code,
-            historySnapshot.course_name,
-            currentModule || null,
-            currentTerm || null,
-            Number(historySnapshot.fee_amount || 0),
-            req.user?.id || null,
-            moment().format("YYYY-MM-DD HH:mm:ss"),
-          ]
-        );
-        console.log(`✅ Progression recorded. Insert ID: ${insertResult[0].insertId}`);
-      } else {
-        console.log(`⚠️ No history snapshot found for course ${currentCourseId}`);
-      }
-    } else {
-      console.log(`❌ No academic stage change. Skipping progression record.`);
-    }
-
-    // ------------- STEP 2: Update Student Table (Always happens) -------------
+    // ------------- STEP 1: Update Student Table -------------
     let query = `UPDATE students SET 
       first_name=?, middle_name=?, last_name=?, gender=?, dob=?,
       id_number=?, phone=?, email=?, course_id=?, module=?, term=?,
       guardian_name=?, guardian_phone=?, address=?, updatedAt=?`;
 
     const values = [
-      first_name, middle_name || null, last_name, gender, dob || null,
-      id_number || null, phone || null, email || null,
-      course_id, module, term, guardian_name || null,
-      guardian_phone || null, address || null, moment().format("YYYY-MM-DD HH:mm:ss")
+      toNull(first_name), toNull(middle_name), toNull(last_name), toNull(gender), toNull(dob),
+      toNull(id_number), toNull(phone), toNull(email), toNull(nextCourseId), toNull(nextModule), toNull(nextTerm),
+      toNull(guardian_name), toNull(guardian_phone), toNull(address), moment().format("YYYY-MM-DD HH:mm:ss")
     ];
 
     if (photoPath) {
@@ -248,114 +211,193 @@ export const updateStudent = async (req, res) => {
     await connection.execute(query, values);
     console.log(`✅ Student table updated`);
 
-    // ------------- STEP 3: Update User Table -------------
+    // ------------- STEP 2: Update User Table -------------
     if (userId) {
       await connection.execute(
         `UPDATE users SET first_name=?, middle_name=?, last_name=?, email=? WHERE id=?`,
-        [first_name, middle_name || null, last_name, email, userId]
+        [toNull(first_name), toNull(middle_name), toNull(last_name), toNull(email), userId]
       );
       console.log(`✅ User table updated`);
     }
 
-    // ------------- STEP 4: Update Fee Balances if needed -------------
+    // ------------- STEP 3: Update fee-related tables if academic stage changed -------------
     if (academicStageChanged) {
-      const getLevel = (name = "") => {
-        const n = name.toLowerCase();
-        if (n.includes("craft")) return "craft";
-        if (n.includes("diploma")) return "diploma";
-        return "unknown";
-      };
-
-      const [[currCourse]] = await connection.execute(
-        "SELECT course_name FROM courses WHERE course_id=?",
-        [currentCourseId]
-      );
-      const [[nextCourse]] = await connection.execute(
-        "SELECT course_name FROM courses WHERE course_id=?",
-        [nextCourseId]
+      console.log(`✅ Academic stage changed! Updating fee-related tables...`);
+      
+      // Step 3.1: Record Progression
+      const [historySnapshotRows] = await connection.execute(
+        `SELECT c.course_id, c.course_code, c.course_name,
+                COALESCE(SUM(cf.amount),0) AS fee_amount
+         FROM courses c
+         LEFT JOIN course_fees cf ON c.course_id = cf.course_id AND cf.module = ? AND cf.term = ?
+         WHERE c.course_id = ?
+         GROUP BY c.course_id`,
+        [toNull(currentModule), toNull(currentTerm), currentCourseId]
       );
 
-      const currentLevel = getLevel(currCourse?.course_name);
-      const nextLevel = getLevel(nextCourse?.course_name);
-      const sameLevel = currentLevel === nextLevel;
-
-      const shouldUpdateFees = (moduleChanged && sameLevel) || termChanged || currentLevel !== nextLevel;
-
-      if (shouldUpdateFees) {
-        console.log(`💰 Updating fee balances...`);
-        try {
-          const [[prevRow]] = await connection.execute(
-            `SELECT COALESCE(SUM(balance),0) as prev_balance FROM student_fee_balances WHERE student_id=?`,
-            [id]
-          );
-          const previousBalance = Number(prevRow.prev_balance || 0);
-
-          const [courseFees] = await connection.execute(
-            `SELECT * FROM course_fees WHERE course_id=? AND module=? AND term=? ORDER BY fee_type_id`,
-            [nextCourseId, nextModule, nextTerm]
-          );
-
-          if (courseFees.length > 0) {
-            await connection.execute(
-              `DELETE FROM student_fee_balances WHERE student_id=? AND term=? AND module=?`,
-              [id, nextTerm, nextModule]
-            );
-
-            let newModuleTotal = 0;
-            for (const fee of courseFees) {
-              const amount = Number(fee.amount);
-              newModuleTotal += amount;
-
-              await connection.execute(
-                `INSERT INTO student_fee_balances
-                (student_id, course_id, term, fee_type_id, total_fee, amount_paid, balance, module, updated_at)
-                VALUES (?, ?, ?, ?, ?, 0, ?, ?, NOW())`,
-                [id, nextCourseId, fee.term, fee.fee_type_id, amount, amount, fee.module]
-              );
-            }
-
-            if (previousBalance > 0) {
-              await connection.execute(
-                `INSERT INTO student_fee_balances
-                (student_id, course_id, term, fee_type_id, total_fee, amount_paid, balance, module, updated_at)
-                VALUES (?, ?, ?, ?, ?, 0, ?, ?, NOW())`,
-                [id, nextCourseId, nextTerm, 999, previousBalance, previousBalance, nextModule]
-              );
-            }
-
-            const finalTotalFees = newModuleTotal + previousBalance;
-            const [existingSummary] = await connection.execute(
-              "SELECT id, amount_paid FROM student_balances WHERE student_id=? AND course_id=?",
-              [id, nextCourseId]
-            );
-
-            if (existingSummary.length > 0) {
-              const alreadyPaid = Number(existingSummary[0].amount_paid || 0);
-              await connection.execute(
-                `UPDATE student_balances SET total_fees=?, balance=?, updated_at=NOW()
-                 WHERE student_id=? AND course_id=?`,
-                [finalTotalFees, finalTotalFees - alreadyPaid, id, nextCourseId]
-              );
-            } else {
-              await connection.execute(
-                `INSERT INTO student_balances (student_id, course_id, total_fees, amount_paid, balance, last_payment_date, updated_at)
-                 VALUES (?, ?, ?, 0, ?, NULL, NOW())`,
-                [id, nextCourseId, finalTotalFees, finalTotalFees]
-              );
-            }
-
-            await connection.execute(
-              `INSERT INTO audit_logs (user_id, action, target_id, details, created_at)
-               VALUES (?, ?, ?, ?, NOW())`,
-              [req.user?.id || userId, "UPDATE_STUDENT_FEES", id,
-               `Fees updated. Prev balance: ${previousBalance}, New fees: ${newModuleTotal}, Total: ${finalTotalFees}`]
-            );
-            console.log(`✅ Fee balances updated successfully`);
-          }
-        } catch (err) { 
-          console.error("❌ Fee update error:", err); 
-        }
+      const historySnapshot = historySnapshotRows[0];
+      if (historySnapshot) {
+        await connection.execute(
+          `INSERT INTO student_progressions
+           (student_id, course_id, course_code, course_name, module, term, fee_amount, changed_by, archived_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id,
+            historySnapshot.course_id,
+            toNull(historySnapshot.course_code),
+            toNull(historySnapshot.course_name),
+            toNull(currentModule),
+            toNull(currentTerm),
+            Number(historySnapshot.fee_amount || 0),
+            toNull(req.user?.id),
+            moment().format("YYYY-MM-DD HH:mm:ss"),
+          ]
+        );
+        console.log(`✅ Progression recorded`);
       }
+      
+      // Step 3.2: Update Fee Balances
+      try {
+        // Get existing balance from student_balances for the OLD course
+        const [[oldStudentBalance]] = await connection.execute(
+          `SELECT balance, amount_paid FROM student_balances 
+           WHERE student_id = ? AND course_id = ?`,
+          [id, currentCourseId]
+        );
+        
+        const existingBalance = Number(oldStudentBalance?.balance || 0);
+        const existingAmountPaid = Number(oldStudentBalance?.amount_paid || 0);
+        
+        console.log(`\n💰 Existing balance for old course ${currentCourseId}: ${existingBalance}`);
+        
+        // Get all fee types from course_fees for the new course, module, and term
+        const [courseFees] = await connection.execute(
+          `SELECT * FROM course_fees 
+           WHERE course_id = ? AND module = ? AND term = ? 
+           ORDER BY fee_type_id`,
+          [nextCourseId, nextModule, nextTerm]
+        );
+        
+        console.log(`\n📋 Found ${courseFees.length} fee types for Module ${nextModule}, Term ${nextTerm}`);
+        
+        if (courseFees.length > 0) {
+          // Delete existing fee balances for this student's new academic stage
+          const deleteResult = await connection.execute(
+            `DELETE FROM student_fee_balances 
+             WHERE student_id = ? AND course_id = ? AND module = ? AND term = ?`,
+            [id, nextCourseId, nextModule, nextTerm]
+          );
+          console.log(`🗑️ Deleted ${deleteResult[0].affectedRows} existing fee balance records`);
+          
+          // Insert new fee types from course_fees
+          let totalNewFees = 0;
+          
+          console.log(`\n📝 Inserting new fee types:`);
+          for (const fee of courseFees) {
+            const amount = Number(fee.amount);
+            totalNewFees += amount;
+            
+            await connection.execute(
+              `INSERT INTO student_fee_balances 
+               (student_id, course_id, term, fee_type_id, total_fee, amount_paid, balance, module, updated_at)
+               VALUES (?, ?, ?, ?, ?, 0, ?, ?, NOW())`,
+              [id, nextCourseId, fee.term, fee.fee_type_id, amount, amount, fee.module]
+            );
+            console.log(`   ✅ Inserted fee_type_id ${fee.fee_type_id}: ${amount}`);
+          }
+          
+          console.log(`\n💰 Total new fees for Module ${nextModule}, Term ${nextTerm}: ${totalNewFees}`);
+          
+          // Handle carry-over balance if exists
+          if (existingBalance > 0) {
+            // First, check if fee_type_id 999 exists in fee_types table
+            const [[carryOverFeeType]] = await connection.execute(
+              `SELECT id FROM fee_types WHERE id = 999`
+            );
+            
+            if (carryOverFeeType) {
+              // Fee type 999 exists, insert as separate row
+              const [existingCarryOver] = await connection.execute(
+                `SELECT id FROM student_fee_balances 
+                 WHERE student_id = ? AND course_id = ? AND term = ? AND fee_type_id = 999 AND module = ?`,
+                [id, nextCourseId, nextTerm, nextModule]
+              );
+              
+              if (existingCarryOver.length === 0) {
+                await connection.execute(
+                  `INSERT INTO student_fee_balances 
+                   (student_id, course_id, term, fee_type_id, total_fee, amount_paid, balance, module, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 0, ?, ?, NOW())`,
+                  [id, nextCourseId, nextTerm, 999, existingBalance, existingBalance, nextModule]
+                );
+                console.log(`   ✅ Added carry-over balance as fee_type_id 999: ${existingBalance}`);
+              } else {
+                await connection.execute(
+                  `UPDATE student_fee_balances 
+                   SET total_fee = ?, balance = ?, updated_at = NOW()
+                   WHERE student_id = ? AND course_id = ? AND term = ? AND fee_type_id = 999 AND module = ?`,
+                  [existingBalance, existingBalance, id, nextCourseId, nextTerm, nextModule]
+                );
+                console.log(`   ✅ Updated carry-over balance as fee_type_id 999: ${existingBalance}`);
+              }
+            } else {
+              console.log(`   ⚠️ Carry-over balance of ${existingBalance} will be added to total but not as separate row (fee_type_id 999 doesn't exist in fee_types)`);
+              console.log(`   💡 To add carry-over as separate row, run: INSERT INTO fee_types (id, fee_type_name) VALUES (999, 'Carry Over Balance');`);
+            }
+          }
+          
+          // Calculate total fees for student_balances
+          const totalFees = totalNewFees + existingBalance;
+          
+          // Update or insert student_balances
+          const [existingSummary] = await connection.execute(
+            "SELECT id, amount_paid, last_payment_date FROM student_balances WHERE student_id = ? AND course_id = ?",
+            [id, nextCourseId]
+          );
+          
+          if (existingSummary.length > 0) {
+            const currentAmountPaid = Number(existingSummary[0].amount_paid || 0);
+            
+            await connection.execute(
+              `UPDATE student_balances 
+               SET total_fees = ?, 
+                   balance = ?, 
+                   updated_at = NOW()
+               WHERE student_id = ? AND course_id = ?`,
+              [totalFees, totalFees - currentAmountPaid, id, nextCourseId]
+            );
+            
+            console.log(`\n📊 Updated student_balances: total_fees=${totalFees}, balance=${totalFees - currentAmountPaid}`);
+          } else {
+            await connection.execute(
+              `INSERT INTO student_balances 
+               (student_id, course_id, total_fees, amount_paid, balance, last_payment_date, updated_at)
+               VALUES (?, ?, ?, 0, ?, NULL, NOW())`,
+              [id, nextCourseId, totalFees, totalFees]
+            );
+            
+            console.log(`\n📊 Inserted new student_balances: total_fees=${totalFees}, balance=${totalFees}`);
+          }
+          
+          // Log the fee update
+          await connection.execute(
+            `INSERT INTO audit_logs (user_id, action, target_id, details, created_at)
+             VALUES (?, ?, ?, ?, NOW())`,
+            [toNull(req.user?.id), "UPDATE_STUDENT_FEES", id,
+             `Fees updated: Course ${currentCourseId}/M${currentModule}/T${currentTerm} → ${nextCourseId}/M${nextModule}/T${nextTerm}. Balance carried: ${existingBalance}, New fees: ${totalNewFees}, Total: ${totalFees}`]
+          );
+          
+          console.log(`\n✅ Fee balances updated successfully`);
+        } else {
+          console.log(`\n⚠️ WARNING: No course fees found for Module ${nextModule}, Term ${nextTerm}`);
+          console.log(`💡 Please check that course_fees table has entries for course_id=${nextCourseId}, module=${nextModule}, term=${nextTerm}`);
+        }
+      } catch (err) { 
+        console.error("❌ Fee update error:", err);
+        throw err;
+      }
+    } else {
+      console.log(`❌ No academic stage change. Skipping all fee-related updates.`);
     }
 
     await connection.commit();
@@ -365,7 +407,7 @@ export const updateStudent = async (req, res) => {
       success: true,
       message: "Student updated successfully",
       academic_stage_changed: academicStageChanged,
-      progression_recorded: academicStageChanged,
+      fee_tables_updated: academicStageChanged,
       details: {
         course_changed: courseChanged,
         module_changed: moduleChanged,

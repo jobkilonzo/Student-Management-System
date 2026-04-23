@@ -46,10 +46,18 @@ const RegistrarDashboard = () => {
     checkTutor();
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("sms_token");
-    localStorage.removeItem("user");
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await makeRequest.post("/auth/logout");
+    } catch {
+      // ignore
+    } finally {
+      localStorage.removeItem("sms_token");
+      localStorage.removeItem("sms_role");
+      localStorage.removeItem("sms_user");
+      localStorage.removeItem("sms_must_change_password");
+      navigate("/login");
+    }
   };
 
   return (
@@ -66,6 +74,12 @@ const RegistrarDashboard = () => {
           </p>
         </div>
 
+        <button
+          onClick={() => navigate("/account")}
+          className="inline-flex items-center rounded-2xl border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-50"
+        >
+          My Account
+        </button>
         <button
           onClick={handleLogout}
           className="inline-flex items-center rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50"
@@ -125,6 +139,18 @@ const RegistrarDashboard = () => {
             to="/registrar/transcript"
             description="Prepare institutional transcripts with cleaner presentation and downloadable output."
             icon="📜"
+          />
+          <RegistrarActionCard
+            label="Enter Marks"
+            to="/registrar/marks"
+            description="Use the existing marks entry workspace for your assigned units."
+            icon="📝"
+          />
+          <RegistrarActionCard
+            label="Take Attendance"
+            to="/registrar/attendance"
+            description="Take attendance for your assigned units using the existing attendance module."
+            icon="📋"
           />
           {isTutor && (
             <RegistrarActionCard

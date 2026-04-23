@@ -4,6 +4,8 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import authRouter from "./routes/auth.routes.js";
 import coursesRouter from "./routes/registrar/routes.courses.js";
@@ -18,8 +20,12 @@ import notificationsRouter from "./routes/registrar/routes.notifications.js";
 import studentRouter from "./routes/student/routes.student.js"; 
 import accountantRouter from "./routes/accountant/routes.accountant.js";
 import { initDatabase } from "./database/init.js";
+import examsRouter from "./routes/exams.routes.js";
+import { setIO } from "./services/realtime.js";
+import secretaryRouter from "./routes/secretary/routes.secretary.js";
 
 const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // CORS + Middleware
 app.use((req, res, next) => {
@@ -34,6 +40,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
+// Serve uploaded files (e.g., passport photos)
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 // Initialize database
 initDatabase();
 
@@ -47,6 +56,8 @@ export const io = new Server(server, {
     credentials: true
   }
 });
+
+setIO(io);
 
 // Listen for client connections
 io.on("connection", (socket) => {
@@ -69,6 +80,8 @@ app.use('/api/v1/marks', markRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 app.use('/api/v1/student', studentRouter);
 app.use('/api/v1/accountant', accountantRouter);
+app.use('/api/v1/secretary', secretaryRouter);
+app.use('/api/v1/exams', examsRouter);
 
 // Start server
 server.listen(PORT, () => {

@@ -8,7 +8,7 @@ const formatCurrency = (value) => `KSh ${Number(value || 0).toLocaleString()}`;
 
 const Collections = () => {
   const [courses, setCourses] = useState([]);
-  const [feeInputs, setFeeInputs] = useState({}); // key = course_id
+  const [feeInputs, setFeeInputs] = useState({});
   const [loading, setLoading] = useState(true);
   const [savingCourseId, setSavingCourseId] = useState(null);
   const [error, setError] = useState("");
@@ -19,6 +19,7 @@ const Collections = () => {
       setLoading(true);
       setError("");
       const res = await makeRequest.get("/accountant/collections");
+      console.log("Courses data:", res.data);
       setCourses(res.data || []);
     } catch (err) {
       console.error("Failed to load collections:", err);
@@ -42,33 +43,78 @@ const Collections = () => {
     loadFeeTypes();
   }, []);
 
-  // Determine number of modules from course name
-  const getModuleCount = (courseName) => {
-    if (!courseName) return 0;
-    const name = courseName.toLowerCase();
-    if (name.includes("craft")) return 2;
-    if (name.includes("diploma")) return 3;
-    return 0;
+  // Determine course level configuration based on course_type
+  const getCourseLevelConfig = (course) => {
+    if (!course || !course.course_name) return { type: "none", count: 0, label: "", field: "module" };
+    
+    const courseType = course.course_type?.toLowerCase() || "";
+    const courseName = course.course_name.toLowerCase();
+    
+    // stage_based courses - use Stages
+    if (courseType === "stage_based") {
+      if (courseName.includes("certificate") || courseName.includes("secretarial")) {
+        return { type: "stage", count: 3, label: "Stage", field: "module" };
+      }
+      return { type: "stage", count: 3, label: "Stage", field: "module" };
+    }
+    
+    // grade_based courses - use Grades
+    if (courseType === "grade_based") {
+      return { type: "grade", count: 4, label: "Grade", field: "module" };
+    }
+    
+    // level_based courses - use Levels
+    if (courseType === "level_based") {
+      return { type: "level", count: 3, label: "Level", field: "module" };
+    }
+    
+    // modular courses - use Modules
+    if (courseType === "modular") {
+      if (courseName.includes("craft")) {
+        return { type: "modular", count: 2, label: "Module", field: "module" };
+      }
+      if (courseName.includes("diploma")) {
+        return { type: "modular", count: 3, label: "Module", field: "module" };
+      }
+      return { type: "modular", count: 3, label: "Module", field: "module" };
+    }
+    
+    // non_modular courses - NO levels
+    if (courseType === "non_modular") {
+      return { type: "none", count: 0, label: "", field: "module" };
+    }
+    
+    return { type: "none", count: 0, label: "", field: "module" };
   };
 
-  const isFeeAlreadySet = (course, term, fee_type_id, module, excludeId = null) => {
+  const isFeeAlreadySet = (course, term, fee_type_id, levelValue, excludeId = null) => {
     return course.fees_per_term?.some(
       (f) => f.term === term && 
              f.fee_type_id === fee_type_id && 
-             f.module === module &&
+             f.module === levelValue &&
              (excludeId ? f.id !== excludeId : true)
     ) || false;
   };
 
-  // Get available fee types for a specific course, term, and module
-  const getAvailableFeeTypes = (course, term, module, currentFeeTypeId = null) => {
-    if (!course?.fees_per_term || !term || module === undefined || module === null) return feeTypes;
+  const getAvailableFeeTypes = (course, term, levelValue, currentFeeTypeId = null) => {
+    if (!course?.fees_per_term || !term) return feeTypes;
+    
+    if (levelValue !== undefined && levelValue !== null) {
+      const usedFeeTypeIds = course.fees_per_term
+        .filter(f => f.term === term && f.module === levelValue)
+        .map(f => f.fee_type_id);
+      
+      const filteredUsedIds = currentFeeTypeId 
+        ? usedFeeTypeIds.filter(id => id !== currentFeeTypeId)
+        : usedFeeTypeIds;
+      
+      return feeTypes.filter(ft => !filteredUsedIds.includes(ft.id));
+    }
     
     const usedFeeTypeIds = course.fees_per_term
-      .filter(f => f.term === term && f.module === module)
+      .filter(f => f.term === term)
       .map(f => f.fee_type_id);
     
-    // If we're editing, exclude the current fee type from the used list
     const filteredUsedIds = currentFeeTypeId 
       ? usedFeeTypeIds.filter(id => id !== currentFeeTypeId)
       : usedFeeTypeIds;
@@ -81,24 +127,22 @@ const Collections = () => {
     if (!inputData?.amount || !inputData?.term || !inputData?.fee_type_id) return;
 
     const course = courses.find((c) => c.course_id === courseId);
-    const moduleCount = getModuleCount(course.course_name);
+    const levelConfig = getCourseLevelConfig(course);
     
-    // Validate module is required for courses with modules
-    if (moduleCount > 0 && (!inputData.module || inputData.module === "")) {
-      alert(`Module is required for ${course.course_name}. Please select a module (1-${moduleCount}).`);
+    if (levelConfig.count > 0 && (!inputData.level || inputData.level === "")) {
+      alert(`${levelConfig.label} is required for ${course.course_name}. Please select ${levelConfig.label} (1-${levelConfig.count}).`);
       return;
     }
 
-    // For courses without modules, module should be null
-    const moduleValue = moduleCount > 0 ? Number(inputData.module) : null;
+    const levelValue = levelConfig.count > 0 ? Number(inputData.level) : null;
 
-    // Check if fee already exists (excluding current ID if editing)
-    if (course && isFeeAlreadySet(course, inputData.term, inputData.fee_type_id, moduleValue, inputData.id)) {
-      alert("This fee combination (Term + Fee Type + Module) already exists.");
+    if (course && isFeeAlreadySet(course, inputData.term, inputData.fee_type_id, levelValue, inputData.id)) {
+      const levelText = levelConfig.count > 0 ? ` + ${levelConfig.label}` : "";
+      alert(`This fee combination (${levelConfig.label}${levelText} + Term + Fee Type) already exists.`);
       return;
     }
 
-    const saveKey = `${courseId}-${inputData.fee_type_id}-${inputData.term}-${moduleValue}`;
+    const saveKey = `${courseId}-${inputData.fee_type_id}-${inputData.term}-${levelValue}`;
 
     try {
       setSavingCourseId(saveKey);
@@ -108,7 +152,7 @@ const Collections = () => {
         course_id: courseId,
         fee_type_id: inputData.fee_type_id,
         term: inputData.term,
-        module: moduleValue,
+        module: levelValue,
         amount: Number(inputData.amount),
       });
 
@@ -130,7 +174,6 @@ const Collections = () => {
   const downloadFullPDF = () => {
     if (!courses.length) return;
     
-    // Create landscape PDF
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
@@ -140,7 +183,6 @@ const Collections = () => {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Add header
     doc.setFontSize(20);
     doc.setTextColor(0, 0, 0);
     doc.text("Collections Summary", pageWidth / 2, 40, { align: "center" });
@@ -149,18 +191,16 @@ const Collections = () => {
     doc.setTextColor(100, 100, 100);
     doc.text("Fee expectations, receipts, and outstanding balances by course.", pageWidth / 2, 60, { align: "center" });
     
-    // Add generation date
     doc.setFontSize(9);
     doc.setTextColor(128, 128, 128);
     const currentDate = new Date().toLocaleString();
     doc.text(`Generated on: ${currentDate}`, pageWidth - 40, 25, { align: "right" });
 
-    // Define table columns (expanded for landscape)
     const tableColumn = [
       "Course", 
       "Code", 
+      "Level", 
       "Term", 
-      "Module", 
       "Fee Type", 
       "Amount (KSh)", 
       "Students", 
@@ -170,25 +210,32 @@ const Collections = () => {
       "Rate (%)"
     ];
 
-    // Prepare table rows
     const tableRows = courses.flatMap((course) => {
-      const fees = course.fees_per_term?.length ? course.fees_per_term : [{ term: "-", module: "-", amount: 0, fee_type_name: "-" }];
-      return fees.map((fee) => [
-        course.course_name || "-",
-        course.course_code || "-",
-        fee.term || "-",
-        fee.module ? `Module ${fee.module}` : "-",
-        fee.fee_type_name || "-",
-        fee.amount > 0 ? fee.amount.toLocaleString() : "0",
-        course.total_students ?? 0,
-        (course.total_expected ?? 0).toLocaleString(),
-        (course.total_collected ?? 0).toLocaleString(),
-        (course.total_outstanding ?? 0).toLocaleString(),
-        course.collection_rate ?? 0,
-      ]);
+      const levelConfig = getCourseLevelConfig(course);
+      const fees = course.fees_per_term?.length ? course.fees_per_term : [{ term: "-", module: null, amount: 0, fee_type_name: "-" }];
+      
+      return fees.map((fee) => {
+        let levelDisplay = "-";
+        if (levelConfig.count > 0 && fee.module) {
+          levelDisplay = `${levelConfig.label} ${fee.module}`;
+        }
+        
+        return [
+          course.course_name || "-",
+          course.course_code || "-",
+          levelDisplay,
+          fee.term || "-",
+          fee.fee_type_name || "-",
+          fee.amount > 0 ? fee.amount.toLocaleString() : "0",
+          course.total_students ?? 0,
+          (course.total_expected ?? 0).toLocaleString(),
+          (course.total_collected ?? 0).toLocaleString(),
+          (course.total_outstanding ?? 0).toLocaleString(),
+          course.collection_rate ?? 0,
+        ];
+      });
     });
 
-    // Calculate totals
     const totals = courses.reduce((acc, course) => {
       acc.students += Number(course.total_students || 0);
       acc.expected += Number(course.total_expected || 0);
@@ -202,7 +249,6 @@ const Collections = () => {
       ? (totals.rates.reduce((a, b) => a + b, 0) / totals.rates.length).toFixed(2)
       : 0;
 
-    // Add total row
     tableRows.push([
       "TOTAL", 
       "-", 
@@ -217,7 +263,6 @@ const Collections = () => {
       avgRate
     ]);
 
-    // Generate table
     autoTable(doc, {
       startY: 80,
       head: [tableColumn],
@@ -238,23 +283,22 @@ const Collections = () => {
         halign: 'right'
       },
       columnStyles: {
-        0: { halign: 'left', cellWidth: 'auto' }, // Course
-        1: { halign: 'center', cellWidth: 50 }, // Code
-        2: { halign: 'center', cellWidth: 40 }, // Term
-        3: { halign: 'center', cellWidth: 60 }, // Module
-        4: { halign: 'left', cellWidth: 'auto' }, // Fee Type
-        5: { halign: 'right', cellWidth: 70 }, // Amount
-        6: { halign: 'center', cellWidth: 50 }, // Students
-        7: { halign: 'right', cellWidth: 80 }, // Expected
-        8: { halign: 'right', cellWidth: 80 }, // Collected
-        9: { halign: 'right', cellWidth: 80 }, // Outstanding
-        10: { halign: 'center', cellWidth: 50 } // Rate
+        0: { halign: 'left', cellWidth: 'auto' },
+        1: { halign: 'center', cellWidth: 50 },
+        2: { halign: 'center', cellWidth: 50 },
+        3: { halign: 'center', cellWidth: 40 },
+        4: { halign: 'left', cellWidth: 'auto' },
+        5: { halign: 'right', cellWidth: 70 },
+        6: { halign: 'center', cellWidth: 50 },
+        7: { halign: 'right', cellWidth: 80 },
+        8: { halign: 'right', cellWidth: 80 },
+        9: { halign: 'right', cellWidth: 80 },
+        10: { halign: 'center', cellWidth: 50 }
       },
       alternateRowStyles: { fillColor: [245, 245, 245] },
       margin: { left: 20, right: 20, top: 80, bottom: 30 },
       theme: "grid",
       didDrawPage: (data) => {
-        // Add page numbers
         const pageNumber = doc.internal.getNumberOfPages();
         doc.setFontSize(9);
         doc.setTextColor(128, 128, 128);
@@ -267,31 +311,19 @@ const Collections = () => {
       },
     });
 
-    // Save the PDF
     doc.save(`collections_summary_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   return (
     <AccountantLayout title="Collections" subtitle="Compare fee expectations, receipts, and outstanding balances by course.">
-      {/* Add Download Button */}
       <div className="mb-4 flex justify-end">
         <button
           onClick={downloadFullPDF}
           disabled={!courses.length || loading}
           className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
         >
-          <svg 
-            className="w-4 h-4" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
-            />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
           Download PDF Report
         </button>
@@ -322,15 +354,14 @@ const Collections = () => {
               {courses.map((course) => {
                 const formKey = course.course_id;
                 const formData = feeInputs[formKey];
-                const moduleCount = getModuleCount(course.course_name);
-                const hasModules = moduleCount > 0;
+                const levelConfig = getCourseLevelConfig(course);
+                const hasLevels = levelConfig.count > 0;
                 
-                // Get available fee types based on selected term and module
                 const availableFeeTypes = getAvailableFeeTypes(
                   course, 
                   formData?.term, 
-                  formData?.module ? Number(formData.module) : null,
-                  formData?.id // Pass current ID to exclude it from used list
+                  hasLevels ? (formData?.level ? Number(formData.level) : null) : null,
+                  formData?.id
                 );
                 
                 return (
@@ -338,21 +369,37 @@ const Collections = () => {
                     <td className="py-4">
                       <p className="font-semibold text-slate-900">{course.course_name}</p>
                       <p className="text-sm text-slate-500">{course.course_code}</p>
+                      <p className="text-xs mt-1">
+                        {course.course_type === "modular" && (
+                          <span className="text-green-600">📚 Modular ({levelConfig.label}s 1-{levelConfig.count})</span>
+                        )}
+                        {course.course_type === "stage_based" && (
+                          <span className="text-purple-600">🎭 Stage-Based ({levelConfig.label}s 1-{levelConfig.count})</span>
+                        )}
+                        {course.course_type === "grade_based" && (
+                          <span className="text-orange-600">📊 Grade-Based ({levelConfig.label}s 1-{levelConfig.count})</span>
+                        )}
+                        {course.course_type === "level_based" && (
+                          <span className="text-indigo-600">📈 Level-Based ({levelConfig.label}s 1-{levelConfig.count})</span>
+                        )}
+                        {course.course_type === "non_modular" && (
+                          <span className="text-blue-600">📋 Non-Modular (No levels)</span>
+                        )}
+                      </p>
                     </td>
 
-                    {/* Current Fee */}
+                    {/* Current Fee Per Student - Display in order: Level → Term → Fee Type → Amount */}
                     <td className="py-4">
                       <div className="flex flex-col gap-2">
                         {course.fees_per_term?.length > 0 ? (
                           course.fees_per_term.map((fee) => (
-                            <div key={fee.id} className="flex items-center gap-3">
+                            <div key={fee.id} className="flex items-center justify-between gap-3">
                               <span className="font-semibold text-slate-900">
-                                Term {fee.term} - {fee.fee_type_name}
-                                {fee.module ? ` (Module ${fee.module})` : ""}: {formatCurrency(fee.amount)}
+                                {hasLevels && fee.module ? `${levelConfig.label} ${fee.module} - ` : ""}
+                                Term {fee.term} - {fee.fee_type_name}: {formatCurrency(fee.amount)}
                               </span>
                               <button
                                 onClick={() => {
-                                  console.log("Editing fee:", fee); // Debug log
                                   setFeeInputs((prev) => ({
                                     ...prev,
                                     [formKey]: {
@@ -361,8 +408,7 @@ const Collections = () => {
                                       term: fee.term,
                                       fee_type_id: fee.fee_type_id,
                                       fee_type_name: fee.fee_type_name,
-                                      // FIX: Properly set module value
-                                      module: fee.module ? String(fee.module) : (hasModules ? "" : null),
+                                      level: fee.module ? String(fee.module) : (hasLevels ? "" : null),
                                     },
                                   }));
                                 }}
@@ -378,10 +424,39 @@ const Collections = () => {
                       </div>
                     </td>
 
-                    {/* Set / Edit Fee Form */}
+                    {/* Set / Edit Fee Form - ORDER: Level → Term → Fee Type → Amount */}
                     <td className="py-4">
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
+                          {/* 1. LEVEL DROPDOWN */}
+                          {hasLevels && (
+                            <select
+                              value={formData?.level || ""}
+                              onChange={(e) => {
+                                const newLevel = e.target.value;
+                                setFeeInputs((prev) => ({
+                                  ...prev,
+                                  [formKey]: { 
+                                    ...prev[formKey], 
+                                    level: newLevel,
+                                    term: "",
+                                    fee_type_id: "",
+                                  },
+                                }));
+                              }}
+                              className="rounded-lg border border-slate-300 px-2 py-2 outline-none focus:border-teal-600"
+                              required
+                            >
+                              <option value="" disabled>Select {levelConfig.label}</option>
+                              {Array.from({ length: levelConfig.count }, (_, i) => (
+                                <option key={i + 1} value={i + 1}>
+                                  {levelConfig.label} {i + 1}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
+                          {/* 2. TERM DROPDOWN */}
                           <select
                             value={formData?.term || ""}
                             onChange={(e) => {
@@ -391,46 +466,22 @@ const Collections = () => {
                                 [formKey]: { 
                                   ...prev[formKey], 
                                   term: newTerm,
-                                  fee_type_id: "", // Reset fee type
-                                  // Keep module if it exists, but don't reset it unnecessarily
+                                  fee_type_id: "",
                                 },
                               }));
                             }}
                             className="rounded-lg border border-slate-300 px-2 py-2 outline-none focus:border-teal-600"
+                            disabled={hasLevels && !formData?.level}
                           >
-                            <option value="" disabled>Select Term</option>
+                            <option value="" disabled>
+                              {hasLevels && !formData?.level ? `Select ${levelConfig.label} First` : "Select Term"}
+                            </option>
                             <option value={1}>Term 1</option>
                             <option value={2}>Term 2</option>
                             <option value={3}>Term 3</option>
                           </select>
 
-                          {/* Module dropdown - required for courses with modules */}
-                          {hasModules && (
-                            <select
-                              value={formData?.module || ""}
-                              onChange={(e) => {
-                                const newModule = e.target.value;
-                                setFeeInputs((prev) => ({
-                                  ...prev,
-                                  [formKey]: { 
-                                    ...prev[formKey], 
-                                    module: newModule,
-                                    fee_type_id: "", // Reset fee type when module changes
-                                  },
-                                }));
-                              }}
-                              className="rounded-lg border border-slate-300 px-2 py-2 outline-none focus:border-teal-600"
-                              required
-                            >
-                              <option value="" disabled>Select Module</option>
-                              {Array.from({ length: moduleCount }, (_, i) => (
-                                <option key={i + 1} value={i + 1}>
-                                  Module {i + 1}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-
+                          {/* 3. FEE TYPE DROPDOWN */}
                           <select
                             value={formData?.fee_type_id || ""}
                             onChange={(e) =>
@@ -440,14 +491,10 @@ const Collections = () => {
                               }))
                             }
                             className="rounded-lg border border-slate-300 px-2 py-2 outline-none focus:border-teal-600"
-                            disabled={!formData?.term || (hasModules && !formData?.module && formData?.module !== 0)}
+                            disabled={!formData?.term}
                           >
                             <option value="" disabled>
-                              {!formData?.term 
-                                ? "Select Term First" 
-                                : (hasModules && !formData?.module) 
-                                ? "Select Module First" 
-                                : "Select Fee Type"}
+                              {!formData?.term ? "Select Term First" : "Select Fee Type"}
                             </option>
                             {availableFeeTypes.map((ft) => (
                               <option key={ft.id} value={ft.id}>
@@ -456,6 +503,7 @@ const Collections = () => {
                             ))}
                           </select>
 
+                          {/* 4. AMOUNT INPUT */}
                           <input
                             type="number"
                             min="0"
@@ -467,22 +515,23 @@ const Collections = () => {
                                 [formKey]: { ...prev[formKey], amount: e.target.value },
                               }))
                             }
-                            disabled={!formData?.term || !formData?.fee_type_id || (hasModules && !formData?.module && formData?.module !== 0)}
+                            disabled={!formData?.term || !formData?.fee_type_id}
                             className="w-32 rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-teal-600"
                           />
 
+                          {/* 5. SAVE BUTTON */}
                           <button
                             onClick={() => handleSaveFee(course.course_id)}
                             disabled={
                               !formData?.term ||
                               !formData?.fee_type_id ||
                               !formData?.amount ||
-                              (hasModules && !formData?.module) ||
-                              savingCourseId === `${course.course_id}-${formData?.fee_type_id}-${formData?.term}-${formData?.module}`
+                              (hasLevels && !formData?.level) ||
+                              savingCourseId === `${course.course_id}-${formData?.fee_type_id}-${formData?.term}-${formData?.level}`
                             }
                             className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
                           >
-                            {savingCourseId === `${course.course_id}-${formData?.fee_type_id}-${formData?.term}-${formData?.module}`
+                            {savingCourseId === `${course.course_id}-${formData?.fee_type_id}-${formData?.term}-${formData?.level}`
                               ? "Saving..."
                               : formData?.id
                               ? "Update"

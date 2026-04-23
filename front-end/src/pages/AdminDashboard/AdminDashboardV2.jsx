@@ -273,6 +273,12 @@ const AdminDashboardV2 = () => {
 
         <div className="flex flex-wrap items-center justify-end gap-3">
           <button
+            onClick={() => navigate("/account")}
+            className="rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-sky-800 shadow transition hover:bg-sky-50"
+          >
+            My Account
+          </button>
+          <button
             onClick={() => navigate("/registrar")}
             className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-sky-700"
           >

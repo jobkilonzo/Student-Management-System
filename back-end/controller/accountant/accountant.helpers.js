@@ -43,18 +43,18 @@ export const getStudentFinancials = async () => {
       s.createdAt,
       c.course_name,
       c.course_code,
-      COALESCE(SUM(cf.amount), 0) AS current_fee,
+      COALESCE(SUM(sfb.total_fee), 0) AS current_fee,
       COALESCE(history.total_historical_fees, 0) AS historical_fee_total,
       COALESCE(payments.amount_paid, 0) AS amount_paid,
       GREATEST(
-        COALESCE(SUM(cf.amount), 0) + COALESCE(history.total_historical_fees, 0) - COALESCE(payments.amount_paid, 0),
+        COALESCE(SUM(sfb.total_fee), 0) + COALESCE(history.total_historical_fees, 0) - COALESCE(payments.amount_paid, 0),
         0
       ) AS balance,
       payments.last_payment_date,
       payments.last_payment_amount
     FROM students s
     LEFT JOIN courses c ON s.course_id = c.course_id
-    LEFT JOIN course_fees cf ON s.course_id = cf.course_id
+    LEFT JOIN student_fee_balances sfb ON s.id = sfb.student_id
     LEFT JOIN (
       SELECT student_id, SUM(fee_amount) AS total_historical_fees
       FROM student_progressions
@@ -111,6 +111,7 @@ export const getStudentFinancials = async () => {
     };
   });
 };
+
 export const getRecentFeePayments = async (limit = 5) => {
   const safeLimit = Number(limit) > 0 ? Number(limit) : 5;
   const query = `
@@ -137,32 +138,36 @@ export const getRecentFeePayments = async (limit = 5) => {
   return rows;
 };
 
-export const getCourseFeeSummary = async () => {
-  // 1. Get all courses + students count
+export const getCourseFeeSummary = async () => { 
+  // 1. Get all courses with student counts
   const [courses] = await db.execute(`
     SELECT 
       c.course_id,
       c.course_name,
       c.course_code,
-      COUNT(s.id) AS total_students
+      c.course_type,
+      COUNT(DISTINCT s.id) AS total_students
     FROM courses c
     LEFT JOIN students s ON s.course_id = c.course_id
     GROUP BY c.course_id
   `);
 
-  // 2. Get course fees (NOW includes fee types)
-  const [fees] = await db.execute(`
+  // 2. Get total expected fees per course (including module/stage)
+  const [studentBalances] = await db.execute(`
     SELECT 
-      cf.course_id,
-      cf.term,
-      cf.amount,
-      cf.fee_type_id,
-      ft.name AS fee_type_name
-    FROM course_fees cf
-    JOIN fee_types ft ON ft.id = cf.fee_type_id
+      s.course_id,
+      SUM(sfb.total_fee) AS total_expected
+    FROM student_fee_balances sfb
+    INNER JOIN students s ON s.id = sfb.student_id
+    GROUP BY s.course_id
   `);
 
-  // 3. Get payments
+  const balanceMap = {};
+  studentBalances.forEach((b) => {
+    balanceMap[b.course_id] = Number(b.total_expected || 0);
+  });
+
+  // 3. Get total payments per course
   const [payments] = await db.execute(`
     SELECT 
       course_id,
@@ -171,51 +176,131 @@ export const getCourseFeeSummary = async () => {
     GROUP BY course_id
   `);
 
-  // Map payments
   const paymentMap = {};
   payments.forEach((p) => {
     paymentMap[p.course_id] = Number(p.total_collected || 0);
   });
 
-  // Map fees per course
-  const feeMap = {};
-  fees.forEach((f) => {
-    if (!feeMap[f.course_id]) feeMap[f.course_id] = [];
+  // 4. Get course fees with module/level information
+  const [fees] = await db.execute(`
+    SELECT 
+      cf.id,
+      cf.course_id,
+      cf.term,
+      cf.module,
+      cf.amount,
+      cf.fee_type_id,
+      ft.name AS fee_type_name
+    FROM course_fees cf
+    JOIN fee_types ft ON ft.id = cf.fee_type_id
+    ORDER BY cf.course_id, cf.module, cf.term, cf.fee_type_id
+  `);
 
-    feeMap[f.course_id].push({
-      term: f.term,
-      amount: Number(f.amount),
-      fee_type_id: f.fee_type_id,
-      fee_type_name: f.fee_type_name,
+  const feeMap = {};
+  fees.forEach((fee) => {
+    if (!feeMap[fee.course_id]) feeMap[fee.course_id] = [];
+    feeMap[fee.course_id].push({
+      id: fee.id,
+      term: fee.term,
+      module: fee.module, // This stores module number OR stage number
+      amount: Number(fee.amount),
+      fee_type_id: fee.fee_type_id,
+      fee_type_name: fee.fee_type_name,
     });
   });
 
-  // 4. Build final response
+  // 5. Build final course summary
   return courses.map((course) => {
-    const courseFees = feeMap[course.course_id] || [];
-
-    // Total fee per student = SUM of all fee types
-    const totalFeePerStudent = courseFees.reduce(
-      (sum, f) => sum + Number(f.amount || 0),
-      0
-    );
-
-    const totalExpected = totalFeePerStudent * course.total_students;
+    const totalExpected = balanceMap[course.course_id] || 0;
     const totalCollected = paymentMap[course.course_id] || 0;
     const totalOutstanding = totalExpected - totalCollected;
-
     const collectionRate =
       totalExpected > 0
-        ? ((totalCollected / totalExpected) * 100).toFixed(2)
+        ? Number(((totalCollected / totalExpected) * 100).toFixed(2))
         : 0;
 
     return {
-      ...course,
-      fees_per_term: courseFees,
+      course_id: course.course_id,
+      course_name: course.course_name,
+      course_code: course.course_code,
+      course_type: course.course_type,
+      total_students: Number(course.total_students || 0),
+      fees_per_term: feeMap[course.course_id] || [],
       total_expected: totalExpected,
       total_collected: totalCollected,
       total_outstanding: totalOutstanding,
-      collection_rate: Number(collectionRate),
+      collection_rate: collectionRate,
     };
   });
+};
+
+// Optional: Get fee types endpoint
+export const getFeeTypes = async (req, res) => {
+  try {
+    const [rows] = await db.execute(`
+      SELECT id, name, description, is_active 
+      FROM fee_types 
+      WHERE is_active = 1 OR is_active IS NULL
+      ORDER BY name
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("Error fetching fee types:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// Optional: Create/Update course fee endpoint
+export const saveCourseFee = async (req, res) => {
+  try {
+    const { id, course_id, fee_type_id, term, module, amount } = req.body;
+
+    if (!course_id || !fee_type_id || !term || !amount) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // For non_modular courses, module should be null
+    const [course] = await db.execute(
+      "SELECT course_type FROM courses WHERE course_id = ?",
+      [course_id]
+    );
+    
+    let moduleValue = module;
+    if (course[0]?.course_type === "non_modular") {
+      moduleValue = null;
+    }
+
+    if (id) {
+      // Update existing fee
+      await db.execute(
+        `UPDATE course_fees 
+         SET fee_type_id = ?, term = ?, module = ?, amount = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [fee_type_id, term, moduleValue, amount, id]
+      );
+      res.json({ message: "Fee updated successfully" });
+    } else {
+      // Check for duplicate
+      const [existing] = await db.execute(
+        `SELECT id FROM course_fees 
+         WHERE course_id = ? AND fee_type_id = ? AND term = ? AND (module = ? OR (module IS NULL AND ? IS NULL))`,
+        [course_id, fee_type_id, term, moduleValue, moduleValue]
+      );
+      
+      if (existing.length > 0) {
+        return res.status(409).json({ message: "This fee combination already exists" });
+      }
+
+      // Insert new fee
+      await db.execute(
+        `INSERT INTO course_fees (course_id, fee_type_id, term, module, amount, created_at)
+         VALUES (?, ?, ?, ?, ?, NOW())`,
+        [course_id, fee_type_id, term, moduleValue, amount]
+      );
+      res.json({ message: "Fee added successfully" });
+    }
+  } catch (err) {
+    console.error("Error saving course fee:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
 };

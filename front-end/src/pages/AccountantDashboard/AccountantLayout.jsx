@@ -5,6 +5,7 @@ const navItems = [
   { label: "Student Accounts", to: "/accountant/student-accounts" },
   { label: "Collections", to: "/accountant/collections" },
   { label: "Reports", to: "/accountant/reports" },
+  { label: "My Account", to: "/account" },
 ];
 
 const AccountantLayout = ({ title, subtitle, children }) => {
