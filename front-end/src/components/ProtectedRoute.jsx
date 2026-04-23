@@ -8,6 +8,10 @@ const getToken = () => {
   return localStorage.getItem("sms_token");
 };
 
+const mustChangePassword = () => {
+  return localStorage.getItem("sms_must_change_password") === "true";
+};
+
 const ProtectedRoute = ({ allowedRoles = [], children }) => {
   const location = useLocation();
   const role = getStoredRole();
@@ -16,6 +20,11 @@ const ProtectedRoute = ({ allowedRoles = [], children }) => {
   // Not logged in
   if (!token || !role) {
     return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  // Force password change before accessing anything else
+  if (mustChangePassword() && location.pathname !== "/change-password") {
+    return <Navigate to="/change-password" replace />;
   }
 
   // Role not allowed

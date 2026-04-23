@@ -6,6 +6,7 @@ import collectionsRoutes from "./collections.routes.js";
 import reportsRoutes from "./reports.routes.js";
 import courseFeesRoutes from "./courseFees.routes.js";
 import paymentsRoutes from "./payments.routes.js";
+import dashboardRoutes from "./dashboard.routes.js";
 
 const router = express.Router();
 
@@ -16,5 +17,6 @@ router.use("/", collectionsRoutes);
 router.use("/", reportsRoutes);
 router.use("/", courseFeesRoutes);
 router.use("/", paymentsRoutes);
+router.use("/", dashboardRoutes);
 
 export default router;

@@ -4,6 +4,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import ExamManagement from "./pages/ExamManagement";
+import ChangePassword from "./pages/ChangePassword";
+import MyAccount from "./pages/Account/MyAccount";
 
 /** Admin */
 import AdminDashboard from "./pages/AdminDashboard/AdminDashboardV2";
@@ -22,8 +24,9 @@ import ResultsPro from "./pages/StudentDashboard/ResultsPro";
 
 /** Exam Officer */
 import ExamOfficerDashboard from "./pages/ExamOfficer/ExamOfficerDashboard";
-import ManageExams from "./pages/ExamOfficer/ManageExams";
-import ReviewMarks from "./pages/ExamOfficer/ReviewMarks";
+import ManageExams from "./pages/ExamOfficer/ManageExamsPro";
+import ReviewMarks from "./pages/ExamOfficer/ReviewMarksPro";
+import ExamOfficerAttendance from "./pages/ExamOfficer/ExamOfficerAttendance";
 
 /** Accountant */
 import AccountantDashboard from "./pages/AccountantDashboard/AccountantDashboard";
@@ -46,6 +49,18 @@ import RegistrarStudents from "./pages/RegistrarDashboard/RegistrarStudents";
 import RegistrarReports from "./pages/RegistrarDashboard/RegistrarReports";
 import GenerateTranscript from "./pages/RegistrarDashboard/GenerateTranscript";
 import AssignUnitsPage from "./pages/RegistrarDashboard/AssignUnitsPage";
+import RegistrarAttendance from "./pages/RegistrarDashboard/RegistrarAttendance";
+import RegistrarMarks from "./pages/RegistrarDashboard/RegistrarMarks";
+
+/** Secretary */
+import SecretaryDashboard from "./pages/Secretary/SecretaryDashboard";
+import SecretaryStudents from "./pages/Secretary/SecretaryStudents";
+import SecretaryStudentDetail from "./pages/Secretary/SecretaryStudentDetail";
+import SecretaryEnrollment from "./pages/Secretary/SecretaryEnrollment";
+import SecretaryReports from "./pages/Secretary/SecretaryReports";
+import SecretaryNotifications from "./pages/Secretary/SecretaryNotifications";
+import SecretaryFeePayments from "./pages/Secretary/SecretaryFeePayments";
+
 
 /** Components */
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -69,6 +84,12 @@ function App() {
           }
         />
 
+        {/* Force password change */}
+        <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
+
+        {/* My Account (all roles) */}
+        <Route path="/account" element={<ProtectedRoute><MyAccount /></ProtectedRoute>} />
+
         {/* Admin Routes */}
         <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin","registrar"]}><AdminDashboard /></ProtectedRoute>} />
         <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={["admin"]}><SystemSettings /></ProtectedRoute>} />
@@ -89,6 +110,7 @@ function App() {
         <Route path="/exam-officer" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ExamOfficerDashboard /></ProtectedRoute>} />
         <Route path="/exam-officer/manage-exams" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ManageExams /></ProtectedRoute>} />
         <Route path="/exam-officer/review-marks" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ReviewMarks /></ProtectedRoute>} />
+        <Route path="/exam-officer/attendance" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ExamOfficerAttendance /></ProtectedRoute>} />
 
         {/* Accountant Routes */}
         <Route path="/accountant" element={<Navigate to="/accountant/dashboard" replace />} />
@@ -112,9 +134,21 @@ function App() {
         <Route path="/registrar/reports" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><RegistrarReports /></ProtectedRoute>} />
         <Route path="/registrar/assign-units" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><AssignUnitsPage /></ProtectedRoute>} />
         <Route path="/registrar/transcript" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><GenerateTranscript /></ProtectedRoute>} />
+        <Route path="/registrar/attendance" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><RegistrarAttendance /></ProtectedRoute>} />
+        <Route path="/registrar/marks" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><RegistrarMarks /></ProtectedRoute>} />
+
+        {/* Secretary Routes */}
+        <Route path="/secretary" element={<ProtectedRoute allowedRoles={["secretary"]}><SecretaryDashboard /></ProtectedRoute>} />
+        <Route path="/secretary/students" element={<ProtectedRoute allowedRoles={["secretary"]}><SecretaryStudents /></ProtectedRoute>} />
+        <Route path="/secretary/students/:id" element={<ProtectedRoute allowedRoles={["secretary"]}><SecretaryStudentDetail /></ProtectedRoute>} />
+        <Route path="/secretary/enrollment" element={<ProtectedRoute allowedRoles={["secretary"]}><SecretaryEnrollment /></ProtectedRoute>} />
+        <Route path="/secretary/fee-payments" element={<ProtectedRoute allowedRoles={["secretary"]}><SecretaryFeePayments /></ProtectedRoute>} />
+        <Route path="/secretary/reports" element={<ProtectedRoute allowedRoles={["secretary"]}><SecretaryReports /></ProtectedRoute>} />
+        <Route path="/secretary/notifications" element={<ProtectedRoute allowedRoles={["secretary"]}><SecretaryNotifications /></ProtectedRoute>} />
+        
 
         {/* Exam Management */}
-        <Route path="/exam-management" element={<ProtectedRoute allowedRoles={["admin","registrar","tutor"]}><ExamManagement /></ProtectedRoute>} />
+        <Route path="/exam-management" element={<ProtectedRoute allowedRoles={["admin","registrar","tutor","exam_officer"]}><ExamManagement /></ProtectedRoute>} />
 
         {/* Catch all unknown routes */}
         <Route path="*" element={<Navigate to="/login" replace />} />

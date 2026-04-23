@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { makeRequest } from "../../../axios";
 import toast, { Toaster } from "react-hot-toast";
 
-const ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer"];
+const ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer", "secretary"];
 const GENDERS = ["male", "female", "other"];
 
 const UsersManagement = () => {
@@ -19,6 +19,7 @@ const UsersManagement = () => {
     last_name: "",
     email: "",
     password: "",
+    confirmPassword: "",
     role: "registrar",
     course_id: "",
     gender: "",
@@ -59,6 +60,7 @@ const UsersManagement = () => {
       last_name: "",
       email: "",
       password: "",
+      confirmPassword: "",
       role: "registrar",
       course_id: "",
       gender: "",
@@ -68,6 +70,17 @@ const UsersManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      if ((!editingUser && !form.password) || (form.confirmPassword && !form.password) || (form.password && form.password !== form.confirmPassword)) {
+        toast.error(
+          !editingUser && !form.password
+            ? "Password is required"
+            : form.confirmPassword && !form.password
+              ? "Enter the new password first"
+              : "Password and confirmation do not match"
+        );
+        return;
+      }
+
       setLoading(true);
       if (editingUser) {
         await makeRequest.put(`/auth/users/${editingUser.id}`, {
@@ -113,6 +126,7 @@ const UsersManagement = () => {
       last_name: user.last_name || "",
       email: user.email || "",
       password: "",
+      confirmPassword: "",
       role: user.role || "registrar",
       course_id: user.course_id || "",
       gender: user.gender || "",
@@ -264,6 +278,14 @@ const UsersManagement = () => {
                   onChange={(value) => setForm({ ...form, password: value })}
                   required={!editingUser}
                   placeholder={editingUser ? "Leave blank to keep current password" : ""}
+                />
+                <Field
+                  label={editingUser ? "Confirm New Password" : "Confirm Password"}
+                  type="password"
+                  value={form.confirmPassword}
+                  onChange={(value) => setForm({ ...form, confirmPassword: value })}
+                  required={!editingUser}
+                  placeholder={editingUser ? "Confirm only if changing" : ""}
                 />
               </div>
 

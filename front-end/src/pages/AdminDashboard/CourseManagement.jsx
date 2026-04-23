@@ -140,6 +140,7 @@ const CourseManagement = () => {
                 onChange={(e) => setForm({ ...form, course_name: e.target.value })}
                 className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
               />
+
               <div className="flex flex-wrap gap-3">
                 <button
                   type="submit"

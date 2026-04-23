@@ -5,4 +5,5 @@ export const roleRedirect = {
   accountant: "/accountant/dashboard",
   tutor: "/tutor",
   exam_officer: "/exam-officer",
+  secretary: "/secretary",
 };

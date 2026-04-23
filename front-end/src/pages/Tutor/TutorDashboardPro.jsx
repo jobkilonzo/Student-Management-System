@@ -18,7 +18,7 @@ const TutorDashboardPro = () => {
           .filter(Boolean)
           .join(" ");
         setUser({ name: fullName || userData?.user?.first_name || "Tutor" });
-      } catch (err) {
+      } catch {
         setUser({ name: "Tutor" });
       }
 
@@ -107,6 +107,12 @@ const TutorDashboardPro = () => {
                 className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-sky-800 shadow-lg transition hover:bg-sky-50"
               >
                 Open Marks Workspace
+              </button>
+              <button
+                onClick={() => navigate("/account")}
+                className="rounded-2xl border border-white/30 bg-white/15 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/25"
+              >
+                My Account
               </button>
               <button
                 onClick={handleLogout}

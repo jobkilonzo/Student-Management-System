@@ -169,6 +169,29 @@ const STUDENT_PROGRESSIONS_TABLE_SQL = `
   ) ENGINE=InnoDB;
 `;
 
+const EXAM_SCHEDULES_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS exam_schedules (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    unit_id INT NOT NULL,
+    course_id INT NOT NULL,
+    module VARCHAR(50) NULL,
+    exam_date DATE NULL,
+    max_marks DECIMAL(6,2) NOT NULL DEFAULT 100.00,
+    pass_marks DECIMAL(6,2) NOT NULL DEFAULT 40.00,
+    marks_allowed_from DATETIME NULL,
+    marks_allowed_to DATETIME NULL,
+    created_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_exam_schedules_unit (unit_id),
+    KEY idx_exam_schedules_course (course_id),
+    KEY idx_exam_schedules_marks_allowed_from (marks_allowed_from),
+    CONSTRAINT exam_schedules_ibfk_1 FOREIGN KEY (unit_id) REFERENCES units(unit_id) ON DELETE CASCADE,
+    CONSTRAINT exam_schedules_ibfk_2 FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE,
+    CONSTRAINT exam_schedules_ibfk_3 FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  ) ENGINE=InnoDB;
+`;
+
 const DEFAULT_ADMIN_EMAIL = "admin@school.com";
 const DEFAULT_ADMIN_PASSWORD = "Admin123!";
 const DEFAULT_ADMIN_NAME = "Administrator";
@@ -187,8 +210,94 @@ export const initDatabase = async () => {
     await db.execute(COURSE_FEES_TABLE_SQL);
     await db.execute(FEE_PAYMENTS_TABLE_SQL);
     await db.execute(STUDENT_PROGRESSIONS_TABLE_SQL);
+    await db.execute(EXAM_SCHEDULES_TABLE_SQL);
 
     console.log("All tables created or already exist");
+
+    // === Lightweight migrations (backward-compatible) ===
+    // Expand users.role enum to include secretary
+    try {
+      await db.execute(
+        "ALTER TABLE users MODIFY COLUMN role ENUM('admin','registrar','student','accountant','tutor','exam_officer','secretary') NOT NULL DEFAULT 'student'"
+      );
+      console.log("Ensured users.role includes secretary");
+    } catch (err) {
+      console.warn("Could not ensure users.role enum includes secretary:", err.message);
+    }
+
+    // Add must_change_password flag for first-login password change enforcement
+    try {
+      await db.execute(
+        "ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0"
+      );
+      console.log("Added users.must_change_password column");
+    } catch (err) {
+      // Column already exists (or table differs); ignore safely
+      if (err?.code !== "ER_DUP_FIELDNAME") {
+        console.warn("Could not ensure users.must_change_password:", err.message);
+      }
+    }
+
+    // Add passport upload field (stored filename) for all users
+    try {
+      await db.execute(
+        "ALTER TABLE users ADD COLUMN passport VARCHAR(500) NULL"
+      );
+      console.log("Added users.passport column");
+    } catch (err) {
+      if (err?.code !== "ER_DUP_FIELDNAME") {
+        console.warn("Could not ensure users.passport:", err.message);
+      }
+    }
+
+    // Secretary unit assignment table
+    try {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS student_units (
+          student_id INT NOT NULL,
+          unit_id INT NOT NULL,
+          module INT NULL,
+          term INT NULL,
+          status ENUM('Pending','In Progress','Completed') NOT NULL DEFAULT 'Pending',
+          assigned_by INT NULL,
+          assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (student_id, unit_id),
+          KEY idx_student_units_student (student_id),
+          KEY idx_student_units_unit (unit_id),
+          CONSTRAINT student_units_ibfk_1 FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+          CONSTRAINT student_units_ibfk_2 FOREIGN KEY (unit_id) REFERENCES units(unit_id) ON DELETE CASCADE,
+          CONSTRAINT student_units_ibfk_3 FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB;
+      `);
+      console.log("Ensured student_units table exists");
+    } catch (err) {
+      console.warn("Could not ensure student_units table:", err.message);
+    }
+
+    // Student-specific in-app notifications (no email)
+    try {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS student_notifications (
+          id INT NOT NULL AUTO_INCREMENT,
+          student_id INT NOT NULL,
+          type ENUM('enrollment_confirmation','fee_reminder','general_announcement') NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          is_read TINYINT(1) NOT NULL DEFAULT 0,
+          created_by INT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_student_notifications_student (student_id),
+          KEY idx_student_notifications_type (type),
+          KEY idx_student_notifications_created_at (created_at),
+          CONSTRAINT student_notifications_ibfk_1 FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+          CONSTRAINT student_notifications_ibfk_2 FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB;
+      `);
+      console.log("Ensured student_notifications table exists");
+    } catch (err) {
+      console.warn("Could not ensure student_notifications table:", err.message);
+    }
 
     // Check if admin exists
     const [adminRows] = await db.execute(

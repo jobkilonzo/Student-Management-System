@@ -5,7 +5,7 @@ import { recordFeePayment } from "../../controller/accountant/payments.controlle
 const router = express.Router();
 
 router.use(authenticateToken);
-router.use(authorizeRoles("accountant"));
+router.use(authorizeRoles("accountant", "secretary"));
 
 router.post("/payments", recordFeePayment);
 

@@ -3,8 +3,10 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { SECRET_KEY } from "../config/env.js";
 import moment from "moment";
+import fs from "fs";
+import path from "path";
 
-const ALLOWED_ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer"];
+const ALLOWED_ROLES = ["admin", "registrar", "student", "accountant", "tutor", "exam_officer", "secretary"];
 
 // Blacklisted tokens store (use Redis in production)
 let tokenBlacklist = new Set();
@@ -25,12 +27,26 @@ export const login = async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    const [results] = await db.execute(
-      `SELECT id, first_name, middle_name, last_name, email, password, role, deleted_at 
-       FROM users 
-       WHERE email = ? LIMIT 1`,
-      [email]
-    );
+    let results;
+    try {
+      const [rows] = await db.execute(
+        `SELECT id, first_name, middle_name, last_name, email, password, role, deleted_at, must_change_password
+         FROM users 
+         WHERE email = ? LIMIT 1`,
+        [email]
+      );
+      results = rows;
+    } catch (err) {
+      // Backward compatibility if DB hasn't been migrated yet
+      if (err?.code !== "ER_BAD_FIELD_ERROR") throw err;
+      const [rows] = await db.execute(
+        `SELECT id, first_name, middle_name, last_name, email, password, role, deleted_at
+         FROM users 
+         WHERE email = ? LIMIT 1`,
+        [email]
+      );
+      results = rows;
+    }
 
     if (!results.length) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -78,10 +94,203 @@ export const login = async (req, res) => {
       token,
       user: payload,
       student: studentData,
+      must_change_password: Boolean(user.must_change_password),
     });
 
   } catch (err) {
     console.error(err);
+    return res.status(500).json({ error: "Server error", details: err.message });
+  }
+};
+
+/** CHANGE PASSWORD (self) */
+export const changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (!currentPassword?.trim() || !newPassword?.trim()) {
+      return res.status(400).json({ error: "Current password and new password are required" });
+    }
+
+    const [rows] = await db.execute(
+      "SELECT id, password FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+      [userId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: "User not found or deactivated" });
+    }
+
+    const match = await bcrypt.compare(currentPassword.trim(), rows[0].password);
+    if (!match) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword.trim(), 10);
+
+    // Best-effort: if must_change_password column doesn't exist yet, still update password
+    try {
+      await db.execute(
+        "UPDATE users SET password = ?, must_change_password = 0 WHERE id = ? AND deleted_at IS NULL",
+        [hashedPassword, userId]
+      );
+    } catch (err) {
+      if (err?.code !== "ER_BAD_FIELD_ERROR") throw err;
+      await db.execute(
+        "UPDATE users SET password = ? WHERE id = ? AND deleted_at IS NULL",
+        [hashedPassword, userId]
+      );
+    }
+
+    await db.execute(
+      `INSERT INTO audit_logs (user_id, action, target_id, details, created_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [userId, "CHANGE_PASSWORD", userId, "User changed their password"]
+    );
+
+    return res.json({ success: true, message: "Password changed successfully" });
+  } catch (err) {
+    console.error("Change Password Error:", err);
+    return res.status(500).json({ error: "Server error", details: err.message });
+  }
+};
+
+/** UPDATE MY PROFILE (self) */
+export const updateMyProfile = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const userId = req.user.id;
+    const { first_name, middle_name, last_name, email, gender } = req.body || {};
+
+    const updateFields = [];
+    const updateValues = [];
+
+    if (first_name) { updateFields.push("first_name = ?"); updateValues.push(first_name); }
+    if (middle_name !== undefined) { updateFields.push("middle_name = ?"); updateValues.push(middle_name); }
+    if (last_name) { updateFields.push("last_name = ?"); updateValues.push(last_name); }
+    if (gender) { updateFields.push("gender = ?"); updateValues.push(gender); }
+
+    let normalizedEmail = email?.trim().toLowerCase();
+    if (normalizedEmail) {
+      updateFields.push("email = ?");
+      updateValues.push(normalizedEmail);
+    }
+
+    if (updateFields.length === 0) {
+      connection.release();
+      return res.status(400).json({ error: "Provide data to update" });
+    }
+
+    await connection.beginTransaction();
+
+    if (normalizedEmail) {
+      const [existingEmail] = await connection.execute(
+        "SELECT id FROM users WHERE email = ? AND id <> ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+        [normalizedEmail, userId]
+      );
+      if (existingEmail.length > 0) {
+        await connection.rollback();
+        connection.release();
+        return res.status(409).json({ error: "Email is already in use" });
+      }
+    }
+
+    const userQuery = `UPDATE users SET ${updateFields.join(", ")} WHERE id = ? AND deleted_at IS NULL`;
+    updateValues.push(userId);
+    const [result] = await connection.execute(userQuery, updateValues);
+
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      connection.release();
+      return res.status(404).json({ error: "User not found or has been deleted" });
+    }
+
+    // Keep student record in sync when present (best-effort)
+    const [studentRows] = await connection.execute(
+      "SELECT id FROM students WHERE user_id = ? AND deleted_at IS NULL",
+      [userId]
+    );
+    if (studentRows.length > 0) {
+      const studentFields = [];
+      const studentValues = [];
+      if (first_name) { studentFields.push("first_name = ?"); studentValues.push(first_name); }
+      if (middle_name !== undefined) { studentFields.push("middle_name = ?"); studentValues.push(middle_name); }
+      if (last_name) { studentFields.push("last_name = ?"); studentValues.push(last_name); }
+      if (normalizedEmail) { studentFields.push("email = ?"); studentValues.push(normalizedEmail); }
+      if (gender) { studentFields.push("gender = ?"); studentValues.push(gender); }
+
+      if (studentFields.length > 0) {
+        const studentQuery = `UPDATE students SET ${studentFields.join(", ")} WHERE user_id = ? AND deleted_at IS NULL`;
+        studentValues.push(userId);
+        await connection.execute(studentQuery, studentValues);
+      }
+    }
+
+    await connection.execute(
+      `INSERT INTO audit_logs (user_id, action, target_id, details, created_at)
+       VALUES (?, ?, ?, ?, NOW())`,
+      [
+        userId,
+        "UPDATE_PROFILE",
+        userId,
+        `Updated profile fields: ${updateFields.map(f => f.split(" = ")[0]).join(", ")}`,
+      ]
+    );
+
+    await connection.commit();
+    connection.release();
+
+    return res.json({ success: true, message: "Profile updated successfully" });
+  } catch (err) {
+    await connection.rollback();
+    connection.release();
+    console.error("Update My Profile Error:", err);
+    return res.status(500).json({ error: "Database error", details: err.message });
+  }
+};
+
+/** UPLOAD MY PASSPORT (self) */
+export const uploadMyPassport = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const file = req.file;
+
+    if (!file?.filename) {
+      return res.status(400).json({ error: "passport file is required" });
+    }
+
+    let existing = null;
+    try {
+      const [rows] = await db.execute("SELECT passport FROM users WHERE id = ? LIMIT 1", [userId]);
+      existing = rows[0]?.passport || null;
+    } catch (err) {
+      if (err?.code === "ER_BAD_FIELD_ERROR") {
+        return res.status(500).json({ error: "Database missing users.passport column. Restart server to run migrations." });
+      }
+      throw err;
+    }
+
+    // Update DB first; if it fails, keep uploaded file for debugging (best-effort safety)
+    await db.execute("UPDATE users SET passport = ? WHERE id = ?", [file.filename, userId]);
+
+    // Best-effort: delete old file after successful DB update
+    if (existing) {
+      const oldPath = path.join("uploads", "passports", existing);
+      try {
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      } catch {
+        // ignore
+      }
+    }
+
+    return res.json({
+      success: true,
+      passport: file.filename,
+      passport_url: `/uploads/passports/${file.filename}`,
+    });
+  } catch (err) {
+    console.error("Upload passport error:", err);
     return res.status(500).json({ error: "Server error", details: err.message });
   }
 };
@@ -347,7 +556,7 @@ export const getUserStatistics = async (req, res) => {
 };
 
 /** GENERATE REGISTRATION NUMBER */
-const generateRegNo = async (connection, courseId, courseCode, maxRetries = 5) => {
+export const generateRegNo = async (connection, courseId, courseCode, maxRetries = 5) => {
   const year = moment().format("YYYY");
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -609,7 +818,9 @@ export const updateUserByAdmin = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { first_name, middle_name, last_name, email, newPassword, gender } = req.body; // Add gender
+    let { first_name, middle_name, last_name, email, newPassword, gender, role, course_id } = req.body || {};
+    role = role?.trim()?.toLowerCase();
+    const normalizedEmail = email?.trim()?.toLowerCase();
 
     const updateFields = [];
     const updateValues = [];
@@ -617,19 +828,135 @@ export const updateUserByAdmin = async (req, res) => {
     if (first_name) { updateFields.push("first_name = ?"); updateValues.push(first_name); }
     if (middle_name !== undefined) { updateFields.push("middle_name = ?"); updateValues.push(middle_name); }
     if (last_name) { updateFields.push("last_name = ?"); updateValues.push(last_name); }
-    if (email) { updateFields.push("email = ?"); updateValues.push(email); }
+    if (normalizedEmail) { updateFields.push("email = ?"); updateValues.push(normalizedEmail); }
     if (gender) { updateFields.push("gender = ?"); updateValues.push(gender); } // Add gender update
+
+    await connection.beginTransaction();
+
+    const [currentRows] = await connection.execute(
+      "SELECT id, role, first_name, middle_name, last_name, email, gender FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+      [id]
+    );
+
+    if (!currentRows.length) {
+      await connection.rollback();
+      connection.release();
+      return res.status(404).json({ error: "User not found or has been deleted" });
+    }
+
+    const currentUser = currentRows[0];
+
+    if (role && !ALLOWED_ROLES.includes(role)) {
+      await connection.rollback();
+      connection.release();
+      return res.status(400).json({ error: "Invalid role" });
+    }
+
+    // Role changes that affect student record (best-effort, backward-compatible)
+    let roleChanged = false;
+    let studentRecordAction = null; // "created" | "restored" | "soft_deleted" | null
+
+    if (role && role !== currentUser.role) {
+      roleChanged = true;
+
+      // Switching away from student: soft delete student record
+      if (currentUser.role === "student" && role !== "student") {
+        await connection.execute(
+          "UPDATE students SET deleted_at = NOW() WHERE user_id = ? AND deleted_at IS NULL",
+          [id]
+        );
+        studentRecordAction = "soft_deleted";
+      }
+
+      // Switching to student: create or restore student record
+      if (role === "student" && currentUser.role !== "student") {
+        const [studentAny] = await connection.execute(
+          "SELECT id, reg_no, course_id, deleted_at FROM students WHERE user_id = ? LIMIT 1 FOR UPDATE",
+          [id]
+        );
+
+        const finalCourseId = course_id || studentAny?.[0]?.course_id;
+        if (!finalCourseId) {
+          await connection.rollback();
+          connection.release();
+          return res.status(400).json({ error: "course_id is required when changing role to student" });
+        }
+
+        if (studentAny.length > 0) {
+          // restore if soft deleted, and optionally update course_id
+          await connection.execute(
+            "UPDATE students SET deleted_at = NULL, course_id = ? WHERE user_id = ?",
+            [finalCourseId, id]
+          );
+          studentRecordAction = "restored";
+        } else {
+          const [courseResults] = await connection.execute(
+            "SELECT course_code FROM courses WHERE course_id = ? LIMIT 1",
+            [finalCourseId]
+          );
+          if (!courseResults.length) {
+            await connection.rollback();
+            connection.release();
+            return res.status(400).json({ error: "Invalid course_id" });
+          }
+
+          const courseCode = courseResults[0].course_code;
+          const reg_no = await generateRegNo(connection, finalCourseId, courseCode);
+
+          const studentFirst = first_name || currentUser.first_name;
+          const studentMiddle = middle_name !== undefined ? middle_name : currentUser.middle_name;
+          const studentLast = last_name || currentUser.last_name;
+          const studentEmail = normalizedEmail || currentUser.email;
+          const studentGender = gender || currentUser.gender || null;
+
+          await connection.execute(
+            `INSERT INTO students
+             (user_id, reg_no, first_name, middle_name, last_name, email, course_id, gender, createdAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              id,
+              reg_no,
+              studentFirst,
+              studentMiddle || null,
+              studentLast,
+              studentEmail,
+              finalCourseId,
+              studentGender,
+              moment().format("YYYY-MM-DD HH:mm:ss"),
+            ]
+          );
+          studentRecordAction = "created";
+        }
+      }
+
+      updateFields.push("role = ?");
+      updateValues.push(role);
+    }
+
+    // Email uniqueness check (when changed)
+    if (normalizedEmail && normalizedEmail !== currentUser.email) {
+      const [existingEmail] = await connection.execute(
+        "SELECT id FROM users WHERE email = ? AND id <> ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+        [normalizedEmail, id]
+      );
+      if (existingEmail.length > 0) {
+        await connection.rollback();
+        connection.release();
+        return res.status(409).json({ error: "Email is already in use" });
+      }
+    }
+
     if (newPassword) {
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      const hashedPassword = await bcrypt.hash(String(newPassword), 10);
       updateFields.push("password = ?");
       updateValues.push(hashedPassword);
     }
 
     if (updateFields.length === 0) {
+      await connection.rollback();
+      connection.release();
       return res.status(400).json({ error: "Provide data to update" });
     }
-
-    await connection.beginTransaction();
 
     const userQuery = `UPDATE users SET ${updateFields.join(", ")} WHERE id = ? AND deleted_at IS NULL`;
     updateValues.push(id);
@@ -639,6 +966,19 @@ export const updateUserByAdmin = async (req, res) => {
       await connection.rollback();
       connection.release();
       return res.status(404).json({ error: "User not found or has been deleted" });
+    }
+
+    // Admin reset password should force password change on next login (best-effort)
+    if (newPassword) {
+      try {
+        await connection.execute(
+          "UPDATE users SET must_change_password = 1 WHERE id = ? AND deleted_at IS NULL",
+          [id]
+        );
+      } catch (err) {
+        // Backward compatibility if column doesn't exist yet
+        if (err?.code !== "ER_BAD_FIELD_ERROR") throw err;
+      }
     }
 
     // Also update the students table if the user is a student
@@ -654,8 +994,9 @@ export const updateUserByAdmin = async (req, res) => {
       if (first_name) { studentFields.push("first_name = ?"); studentValues.push(first_name); }
       if (middle_name !== undefined) { studentFields.push("middle_name = ?"); studentValues.push(middle_name); }
       if (last_name) { studentFields.push("last_name = ?"); studentValues.push(last_name); }
-      if (email) { studentFields.push("email = ?"); studentValues.push(email); }
+      if (normalizedEmail) { studentFields.push("email = ?"); studentValues.push(normalizedEmail); }
       if (gender) { studentFields.push("gender = ?"); studentValues.push(gender); } // Add gender to students table
+      if (course_id) { studentFields.push("course_id = ?"); studentValues.push(course_id); }
 
       if (studentFields.length > 0) {
         const studentQuery = `UPDATE students SET ${studentFields.join(", ")} WHERE user_id = ? AND deleted_at IS NULL`;
@@ -671,7 +1012,7 @@ export const updateUserByAdmin = async (req, res) => {
         req.user.id,
         "UPDATE_USER",
         id,
-        `Updated user fields: ${updateFields.map(f => f.split(" = ")[0]).join(", ")}${studentRows.length > 0 ? " and student table updated" : ""}`,
+        `Updated user fields: ${updateFields.map(f => f.split(" = ")[0]).join(", ")}${newPassword ? ", must_change_password" : ""}${roleChanged ? `, role_changed(${currentUser.role}→${role})` : ""}${studentRecordAction ? `, student_record_${studentRecordAction}` : ""}${studentRows.length > 0 ? " and student table updated" : ""}`,
       ]
     );
 
@@ -914,10 +1255,29 @@ export const restoreUserByAdmin = async (req, res) => {
 /** GET CURRENT LOGGED-IN USER */
 export const getCurrentUser = async (req, res) => {
   try {
-    const [results] = await db.execute(
+    const variants = [
+      "SELECT id, first_name, middle_name, last_name, email, gender, passport, role FROM users WHERE id = ? AND deleted_at IS NULL",
+      "SELECT id, first_name, middle_name, last_name, email, gender, role FROM users WHERE id = ? AND deleted_at IS NULL",
       "SELECT id, first_name, middle_name, last_name, email, role FROM users WHERE id = ? AND deleted_at IS NULL",
-      [req.user.id]
-    );
+    ];
+
+    let results = null;
+    // eslint-disable-next-line no-restricted-syntax
+    for (const sql of variants) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const [rows] = await db.execute(sql, [req.user.id]);
+        results = rows;
+        break;
+      } catch (err) {
+        if (err?.code === "ER_BAD_FIELD_ERROR") continue;
+        throw err;
+      }
+    }
+
+    if (!results) {
+      throw new Error("Could not load user profile");
+    }
 
     if (!results.length) {
       return res.status(404).json({ error: "User not found or deactivated" });

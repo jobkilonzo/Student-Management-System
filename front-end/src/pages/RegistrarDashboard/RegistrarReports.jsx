@@ -213,7 +213,7 @@ const RegistrarReports = () => {
         </div>
 
         {/* Dynamic Gender Cards */}
-        {stats.genderDistribution.map((gender, index) => (
+        {stats.genderDistribution.map((gender) => (
           <div key={gender.name} className="transform rounded-[28px] border border-sky-100 bg-white/95 p-6 shadow-lg transition-transform duration-300 hover:scale-105">
             <div className="flex items-center justify-between">
               <div>
