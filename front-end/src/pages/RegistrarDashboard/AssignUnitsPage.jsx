@@ -17,22 +17,31 @@ const AssignUnitsPage = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Fetch tutors, units, assignments
+  // Fetch users, units, assignments
+    const allowedRoles = ["tutor", "registrar", "exam_officer", "exam"];
+  const roleLabels = {
+    tutor: "Tutor",
+    registrar: "Registrar",
+    exam_officer: "Exam Officer",
+    exam: "Exam Officer",
+  };
+  const formatRole = (role) => roleLabels[(role || "").trim().toLowerCase()] || role || "Unknown";
+
  useEffect(() => {
   const fetchData = async () => {
     setLoading(true);
     setError("");
     try {
-      const [tutorsRes, unitsRes, assignmentsRes] = await Promise.all([
-        makeRequest.get("auth/users?role=tutor"),
+      const [usersRes, unitsRes, assignmentsRes] = await Promise.all([
+        makeRequest.get("auth/users"),
         makeRequest.get("registrar/units/with-course-name"),
         makeRequest.get("registrar/unit-assignments/with-controls"),
       ]);
 
       // Only tutors should be shown in assign-units (defensive fallback)
       setTutors(
-        (tutorsRes.data?.users || []).filter(
-          (u) => (u.role || "").trim().toLowerCase() === "tutor"
+           (usersRes.data?.users || []).filter((u) =>
+          allowedRoles.includes((u.role || "").trim().toLowerCase())
         )
       );
 
@@ -61,7 +70,7 @@ const AssignUnitsPage = () => {
     setSuccess("");
 
     if (!selectedTutor || !selectedUnit) {
-      setError("Please select a tutor and a unit");
+      setError("Please select a user and a unit");
       return;
     }
 
@@ -77,7 +86,7 @@ const AssignUnitsPage = () => {
     }
 
     const confirmAssign = window.confirm(
-      `Assign ${unitObj.unit_name} to selected tutor?`
+      `Assign ${unitObj.unit_name} to selected user?`
     );
     if (!confirmAssign) return;
 
@@ -187,7 +196,7 @@ const AssignUnitsPage = () => {
   if (loading) return <div className="p-8 text-sky-900/70">Loading data...</div>;
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_40%,_#f8fafc_78%)] p-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_40%,_#f8fafc_78%)] p-4 sm:p-6 lg:p-8">
       <button
         onClick={() => navigate(-1)}
         className="mb-4 rounded-xl bg-slate-700 px-4 py-2 text-white transition hover:bg-slate-800"
@@ -216,13 +225,13 @@ const AssignUnitsPage = () => {
         <select
           value={selectedTutor}
           onChange={(e) => setSelectedTutor(e.target.value)}
-          className="rounded-xl border border-sky-200 px-4 py-2"
+          className="w-full min-w-[220px] max-w-xl rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
           required
         >
-          <option value="">Select a Tutor</option>
+          <option value="">Select a user</option>
           {tutors.map((u) => (
             <option key={u.id} value={u.id}>
-              {u.first_name || u.name || "Unknown"} ({u.role})
+              {u.first_name || u.name || "Unknown"} ({formatRole(u.role)}) 
             </option>
           ))}
         </select>
@@ -232,13 +241,13 @@ const AssignUnitsPage = () => {
           placeholder="Search unit..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="rounded-xl border border-sky-200 px-4 py-2"
+          className="w-full min-w-[220px] max-w-xl rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
         />
 
         <select
           value={selectedUnit}
           onChange={(e) => setSelectedUnit(e.target.value)}
-          className="rounded-xl border border-sky-200 px-4 py-2"
+          className="w-full min-w-[220px] max-w-xl rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
           required
         >
           <option value="">Select a Unit</option>
@@ -251,7 +260,8 @@ const AssignUnitsPage = () => {
             )
             .map((u) => (
               <option key={u.unit_id} value={u.unit_id}>
-                {u.unit_name} - {u.course_name} ({u.module})
+                {u.unit_name} — {u.course_name}
+                {u.module ? ` (${u.module})` : ""}
               </option>
             ))}
         </select>

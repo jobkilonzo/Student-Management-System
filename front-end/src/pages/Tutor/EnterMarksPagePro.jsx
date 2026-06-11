@@ -43,6 +43,7 @@ const EnterMarksPagePro = () => {
     try {
       const res = await makeRequest.get(`/marks/students/${unitId}`);
       const studentsData = res.data.students || [];
+
       setStudents(studentsData);
       setSelectedUnit(unitId);
 
@@ -50,26 +51,33 @@ const EnterMarksPagePro = () => {
       const initialMarks = {};
       const initialEditing = {};
 
+      const clean = (v) =>
+        v === 0 || v === "0" || v === "0.00" || v === null || v === undefined
+          ? ""
+          : v;
+
       studentsData.forEach((student) => {
         origMarks[student.id] = {
-          cat_mark: student.cat_mark || 0,
-          exam_mark: student.exam_mark || 0,
-          attendance: student.attendance || 0,
+          cat_mark: clean(student.cat_mark),
+          exam_mark: clean(student.exam_mark),
+          attendance: clean(student.attendance),
         };
+
         initialMarks[student.id] = {
-          cat_mark: student.cat_mark || 0,
-          exam_mark: student.exam_mark || 0,
-          attendance: student.attendance || 0,
-          total: student.total || 0,
-          grade: student.grade || "-",
+          cat_mark: clean(student.cat_mark),
+          exam_mark: clean(student.exam_mark),
+          attendance: clean(student.attendance),
+          total: clean(student.total),
+          grade: clean(student.grade),
         };
-        initialEditing[student.id] = student.cat_mark === 0 && student.exam_mark === 0;
+
+        initialEditing[student.id] =
+          !student.cat_mark && !student.exam_mark;
       });
 
       setOriginalMarks(origMarks);
       setMarks(initialMarks);
       setEditing(initialEditing);
-
     } catch (err) {
       console.error("Failed to fetch students:", err);
       alert("Error fetching students.");
@@ -77,25 +85,45 @@ const EnterMarksPagePro = () => {
   };
 
   const calculate = (cat, exam) => {
+    if (cat === "" && exam === "") return { total: "", grade: "" };
     const total = Number(cat || 0) + Number(exam || 0);
-    let grade = "F";
-    if (total >= 70) grade = "A";
-    else if (total >= 60) grade = "B";
-    else if (total >= 50) grade = "C";
-    else if (total >= 40) grade = "D";
+    let grade = "REFER";
+
+    if (total >= 90) {
+      grade = "DISTINCTION 1";
+    } else if (total >= 80) {
+      grade = "DISTINCTION 2";
+    } else if (total >= 70) {
+      grade = "CREDIT 3";
+    } else if (total >= 60) {
+      grade = "CREDIT 4";
+    } else if (total >= 50) {
+      grade = "PASS 5";
+    } else if (total >= 40) {
+      grade = "PASS 6";
+    } else {
+      grade = "REFER";
+    }
+
     return { total, grade };
   };
 
   const handleChange = (id, field, value) => {
-    let cat = field === "cat_mark" ? Number(value) : Number(marks[id]?.cat_mark || 0);
-    let exam = field === "exam_mark" ? Number(value) : Number(marks[id]?.exam_mark || 0);
-    let attendance = field === "attendance" ? Number(value) : Number(marks[id]?.attendance || 0);
+    let cat = field === "cat_mark" ? value : marks[id]?.cat_mark || "";
+    let exam = field === "exam_mark" ? value : marks[id]?.exam_mark || "";
+    let attendance = field === "attendance" ? value : marks[id]?.attendance || "";
 
-    cat = Math.max(0, Math.min(cat, 30));
-    exam = Math.max(0, Math.min(exam, 70));
-    attendance = Math.max(0, Math.min(attendance, 100));
+    if (cat !== "") {
+      cat = Math.max(0, Math.min(Number(cat), 30));
+    }
+    if (exam !== "") {
+      exam = Math.max(0, Math.min(Number(exam), 70));
+    }
+    if (attendance !== "") {
+      attendance = Math.max(0, Math.min(Number(attendance), 100));
+    }
 
-    const { total, grade } = calculate(cat, exam);
+    const { total, grade } = cat !== "" && exam !== "" ? calculate(cat, exam) : { total: "", grade: "" };
 
     setMarks((prev) => ({
       ...prev,
@@ -107,16 +135,21 @@ const EnterMarksPagePro = () => {
     if (!selectedUnit) return;
     setSaving(true);
     try {
-      await makeRequest.post("/marks/save", {
+      const payload = {
         unitId: selectedUnit,
-        term: Number(students[0]?.module || 1),
         marks: Object.keys(marks).map((id) => ({
           student_id: Number(id),
           cat_mark: marks[id].cat_mark,
           exam_mark: marks[id].exam_mark,
           attendance: marks[id].attendance,
         })),
-      });
+      };
+      const term = students[0]?.module;
+      if (term != null && term !== "") {
+        payload.term = Number(term);
+      }
+
+      await makeRequest.post("/marks/save", payload);
       alert("Marks saved successfully!");
     } catch (err) {
       console.error("Save error:", err);
@@ -128,9 +161,8 @@ const EnterMarksPagePro = () => {
 
   const handleSaveOne = async (studentId) => {
     try {
-      await makeRequest.post("/marks/save", {
+      const payload = {
         unitId: selectedUnit,
-        term: Number(students.find(s => s.id === studentId)?.module || 1),
         marks: [
           {
             student_id: Number(studentId),
@@ -139,7 +171,13 @@ const EnterMarksPagePro = () => {
             attendance: marks[studentId].attendance,
           },
         ],
-      });
+      };
+      const term = students.find((s) => s.id === studentId)?.module;
+      if (term != null && term !== "") {
+        payload.term = Number(term);
+      }
+
+      await makeRequest.post("/marks/save", payload);
       alert("Mark saved successfully!");
       setEditing((prev) => ({ ...prev, [studentId]: false }));
     } catch (err) {
@@ -221,7 +259,9 @@ const EnterMarksPagePro = () => {
                     <div>
                       <div className="text-lg font-bold text-slate-900">{cls.name}</div>
                       <div className="mt-2 text-sm text-slate-600">{cls.course}</div>
-                      <div className="mt-1 text-sm text-sky-700">{cls.term || "-"}</div>
+                      {cls.term ? (
+                        <div className="mt-1 text-sm text-sky-700">{cls.term}</div>
+                      ) : null}
                     </div>
                     <div className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
                       Unit
@@ -313,6 +353,9 @@ const EnterMarksPagePro = () => {
                         <td className="px-4 py-3">
                           <input
                             type="number"
+                            min="0"
+                            max="30"
+                            step="1"
                             className="w-full rounded-xl border border-sky-200 px-3 py-2 text-center outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
                             disabled={!editing[student.id]}
                             value={marks[student.id]?.cat_mark ?? ""}
@@ -322,6 +365,9 @@ const EnterMarksPagePro = () => {
                         <td className="px-4 py-3">
                           <input
                             type="number"
+                            min="0"
+                            max="70"
+                            step="1"
                             className="w-full rounded-xl border border-sky-200 px-3 py-2 text-center outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
                             disabled={!editing[student.id]}
                             value={marks[student.id]?.exam_mark ?? ""}
@@ -337,10 +383,10 @@ const EnterMarksPagePro = () => {
                             onChange={(e) => handleChange(student.id, "attendance", e.target.value)}
                           />
                         </td>
-                        <td className="px-4 py-3 text-center font-semibold text-slate-900">{marks[student.id]?.total ?? 0}</td>
+                        <td className="px-4 py-3 text-center font-semibold text-slate-900">{marks[student.id]?.total ?? ""}</td>
                         <td className="px-4 py-3 text-center">
                           <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
-                            {marks[student.id]?.grade ?? "-"}
+                            {marks[student.id]?.grade || "-"}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -359,7 +405,7 @@ const EnterMarksPagePro = () => {
                                 className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${isEdited(student.id)
                                   ? "bg-sky-700 text-white hover:bg-sky-800"
                                   : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                                }`}
+                                  }`}
                               >
                                 Save
                               </button>
@@ -386,7 +432,7 @@ const EnterMarksPagePro = () => {
                 className={`rounded-2xl px-6 py-3 text-white font-semibold transition ${anyEdited()
                   ? "bg-sky-700 hover:bg-sky-800"
                   : "bg-gray-300 cursor-not-allowed"
-                }`}
+                  }`}
               >
                 {saving ? "Saving..." : "Save All"}
               </button>

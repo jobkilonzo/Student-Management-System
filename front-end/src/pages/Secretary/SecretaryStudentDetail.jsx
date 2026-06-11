@@ -258,14 +258,23 @@ const KeyVal = ({ label, value }) => (
 );
 
 const StatusBadge = ({ status }) => {
+  const cleanStatus = String(status || "").trim();
+
   const styles = {
     Pending: "bg-slate-100 text-slate-700",
     "In Progress": "bg-amber-100 text-amber-700",
     Completed: "bg-emerald-100 text-emerald-700",
+    Active: "bg-sky-100 text-sky-700",
   };
+
+
   return (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${styles[status] || styles.Pending}`}>
-      {status}
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+        styles[cleanStatus] || styles.Pending
+      }`}
+    >
+      {cleanStatus || "Pending"}
     </span>
   );
 };

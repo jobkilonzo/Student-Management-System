@@ -21,12 +21,15 @@ import UpdateDetailsPro from "./pages/StudentDashboard/UpdateDetailsPro";
 import UnitsAssigned from "./pages/StudentDashboard/UnitsAssigned";
 import FeeBalance from "./pages/StudentDashboard/FeeBalance";
 import ResultsPro from "./pages/StudentDashboard/ResultsPro";
+import ExamCard from "./pages/StudentDashboard/ExamCard";
+import StudentTranscript from "./pages/StudentDashboard/StudentTranscript";
 
 /** Exam Officer */
 import ExamOfficerDashboard from "./pages/ExamOfficer/ExamOfficerDashboard";
 import ManageExams from "./pages/ExamOfficer/ManageExamsPro";
 import ReviewMarks from "./pages/ExamOfficer/ReviewMarksPro";
 import ExamOfficerAttendance from "./pages/ExamOfficer/ExamOfficerAttendance";
+import ManageExamSessions from "./pages/ExamOfficer/ManageExamSessions";
 
 /** Accountant */
 import AccountantDashboard from "./pages/AccountantDashboard/AccountantDashboard";
@@ -51,6 +54,9 @@ import GenerateTranscript from "./pages/RegistrarDashboard/GenerateTranscript";
 import AssignUnitsPage from "./pages/RegistrarDashboard/AssignUnitsPage";
 import RegistrarAttendance from "./pages/RegistrarDashboard/RegistrarAttendance";
 import RegistrarMarks from "./pages/RegistrarDashboard/RegistrarMarks";
+import RegistrarExamCards from "./pages/RegistrarDashboard/RegistrarExamCards";
+import RegistrarExamTimetableTechnical from "./pages/RegistrarDashboard/RegistrarExamTimetableTechnical";
+import RegistrarExamTimetableBusiness from "./pages/RegistrarDashboard/RegistrarExamTimetableBusiness";
 
 /** Secretary */
 import SecretaryDashboard from "./pages/Secretary/SecretaryDashboard";
@@ -104,11 +110,14 @@ function App() {
         <Route path="/student/update-details" element={<ProtectedRoute allowedRoles={["student"]}><UpdateDetailsPro /></ProtectedRoute>} />
         <Route path="/student/units" element={<ProtectedRoute allowedRoles={["student"]}><UnitsAssigned /></ProtectedRoute>} />
         <Route path="/student/fees" element={<ProtectedRoute allowedRoles={["student"]}><FeeBalance /></ProtectedRoute>} />
+        <Route path="/student/exam-card" element={<ProtectedRoute allowedRoles={["student"]}><ExamCard /></ProtectedRoute>} />
         <Route path="/student/results" element={<ProtectedRoute allowedRoles={["student"]}><ResultsPro /></ProtectedRoute>} />
+        <Route path="/student/transcript" element={<ProtectedRoute allowedRoles={["student"]}><StudentTranscript /></ProtectedRoute>} />
 
         {/* Exam Officer Routes */}
         <Route path="/exam-officer" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ExamOfficerDashboard /></ProtectedRoute>} />
         <Route path="/exam-officer/manage-exams" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ManageExams /></ProtectedRoute>} />
+        <Route path="/exam-officer/exam-sessions" element={<ProtectedRoute allowedRoles={["exam_officer","registrar","admin"]}><ManageExamSessions /></ProtectedRoute>} />
         <Route path="/exam-officer/review-marks" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ReviewMarks /></ProtectedRoute>} />
         <Route path="/exam-officer/attendance" element={<ProtectedRoute allowedRoles={["exam_officer"]}><ExamOfficerAttendance /></ProtectedRoute>} />
 
@@ -133,9 +142,12 @@ function App() {
         <Route path="/registrar/students" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><RegistrarStudents /></ProtectedRoute>} />
         <Route path="/registrar/reports" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><RegistrarReports /></ProtectedRoute>} />
         <Route path="/registrar/assign-units" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><AssignUnitsPage /></ProtectedRoute>} />
-        <Route path="/registrar/transcript" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><GenerateTranscript /></ProtectedRoute>} />
+        <Route path="/registrar/transcript" element={<ProtectedRoute allowedRoles={["registrar","admin","exam_officer"]}><GenerateTranscript /></ProtectedRoute>} />
         <Route path="/registrar/attendance" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><RegistrarAttendance /></ProtectedRoute>} />
         <Route path="/registrar/marks" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><RegistrarMarks /></ProtectedRoute>} />
+        <Route path="/registrar/exam-cards" element={<ProtectedRoute allowedRoles={["registrar","admin"]}><RegistrarExamCards /></ProtectedRoute>} />
+        <Route path="/registrar/exams/timetable/technical" element={<ProtectedRoute allowedRoles={["registrar","admin","exam_officer"]}><RegistrarExamTimetableTechnical /></ProtectedRoute>} />
+        <Route path="/registrar/exams/timetable/business" element={<ProtectedRoute allowedRoles={["registrar","admin","exam_officer"]}><RegistrarExamTimetableBusiness /></ProtectedRoute>} />
 
         {/* Secretary Routes */}
         <Route path="/secretary" element={<ProtectedRoute allowedRoles={["secretary"]}><SecretaryDashboard /></ProtectedRoute>} />

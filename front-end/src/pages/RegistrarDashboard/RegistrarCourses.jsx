@@ -10,6 +10,7 @@ const RegistrarCourses = () => {
     course_code: "",
     course_name: "",
     course_type: "",
+    course_category: "Technical",
   });
   const [editingCourseId, setEditingCourseId] = useState(null);
   const [showCourseForm, setShowCourseForm] = useState(false);
@@ -93,6 +94,7 @@ const RegistrarCourses = () => {
         course_code: "",
         course_name: "",
         course_type: "",
+        course_category: "Technical",
       });
     } catch (err) {
       if (err.response) {
@@ -115,6 +117,7 @@ const RegistrarCourses = () => {
       course_code: course.course_code,
       course_name: course.course_name,
       course_type: course.course_type || "",
+      course_category: course.course_category || "Technical",
     });
     setEditingCourseId(course.course_id);
     setShowCourseForm(true);
@@ -218,7 +221,7 @@ const RegistrarCourses = () => {
         name="course_code"
         value={courseForm.course_code}
         onChange={handleChange}
-        placeholder="e.g., BIT, BCS, BBA"
+        placeholder="e.g., 2901, 1920"
         required
         className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
       />
@@ -262,6 +265,24 @@ const RegistrarCourses = () => {
         Defines how the course structure is organized
       </p>
     </div>
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+        Course Category <span className="text-red-500">*</span>
+      </label>
+      <select
+        name="course_category"
+        value={courseForm.course_category}
+        onChange={handleChange}
+        required
+        className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+      >
+        <option value="Technical">Technical</option>
+        <option value="Business">Business</option>
+      </select>
+      <p className="mt-1 text-xs text-slate-500">
+        Classify the course for timetable generation and reporting
+      </p>
+    </div>
   </form>
 </div>
 
@@ -288,6 +309,7 @@ const RegistrarCourses = () => {
                       course_code: "",
                       course_name: "",
                       course_type: "",
+                      course_category: "Technical",
                     });
                     setShowCourseForm(false);
                   }}
@@ -325,13 +347,14 @@ const RegistrarCourses = () => {
                 <th className="border-b border-sky-100 px-4 py-3 text-left text-sm font-semibold">Course Code</th>
                 <th className="border-b border-sky-100 px-4 py-3 text-left text-sm font-semibold">Course Name</th>
                 <th className="border-b border-sky-100 px-4 py-3 text-left text-sm font-semibold">Course Type</th>
+                <th className="border-b border-sky-100 px-4 py-3 text-left text-sm font-semibold">Category</th>
                 <th className="border-b border-sky-100 px-4 py-3 text-center text-sm font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
               {courses.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan="5" className="px-4 py-8 text-center text-slate-500">
                     No courses found. Click "Add Course" to create one.
                   </td>
                 </tr>
@@ -346,6 +369,9 @@ const RegistrarCourses = () => {
                       <span className="inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">
                         {formatCourseType(c.course_type)}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700 text-sm">
+                      {c.course_category || 'Technical'}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-1.5">

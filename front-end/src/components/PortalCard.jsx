@@ -1,5 +1,5 @@
 const PortalCard = ({ title, icon, children }) => (
-  <div className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-8 shadow-lg border border-white/40
+  <div className="relative bg-white/70 backdrop-blur-xl rounded-3xl p-5 sm:p-8 shadow-lg border border-white/40
                   hover:-translate-y-2 hover:shadow-2xl transition-all duration-300">
     
     {/* Icon */}

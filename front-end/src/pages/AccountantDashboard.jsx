@@ -38,11 +38,11 @@ const AccountantDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-slate-50 to-blue-50 px-8 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-slate-50 to-blue-50 px-4 py-8 sm:px-8 sm:py-12">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-3xl shadow-lg p-8 mb-8">
-          <div className="flex justify-between items-center">
+        <div className="bg-white rounded-3xl shadow-lg p-5 sm:p-8 mb-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-3xl font-bold text-slate-800">Accountant Dashboard</h1>
               <p className="mt-2 text-slate-600">
@@ -51,7 +51,7 @@ const AccountantDashboard = () => {
             </div>
             <button
               onClick={handleLogout}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
+              className="w-full sm:w-auto bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
             >
               Logout
             </button>
@@ -111,7 +111,7 @@ const AccountantDashboard = () => {
           {/* Quick Actions */}
           <div className="bg-white rounded-2xl shadow-lg p-6">
             <h2 className="text-xl font-semibold mb-4">Financial Management</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button className="p-4 bg-green-50 rounded-lg hover:bg-green-100 transition text-left">
                 <div className="font-medium text-green-700">💰 Fee Collection</div>
                 <div className="text-sm text-slate-600">Record payments</div>

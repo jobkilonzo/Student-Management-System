@@ -31,8 +31,8 @@ const SecretaryShell = ({ title, subtitle, children }) => {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_34%,_#f8fafc_78%)]">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+      <div className="mx-auto max-w-7xl px-1 py-2 sm:px-1 lg:px-1">
+        <div className="grid gap-2 lg:grid-cols-[260px_1fr]">
           <aside className="rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_20px_60px_-35px_rgba(15,23,42,0.35)]">
             <div className="mb-5">
               <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">

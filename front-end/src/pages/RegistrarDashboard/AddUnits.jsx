@@ -12,7 +12,15 @@ const AddUnits = () => {
   const [courseStructureType, setCourseStructureType] = useState("unknown");
 
   // Form state
-  const [form, setForm] = useState({ code: "", name: "", module: "", stage: "" });
+  const [form, setForm] = useState({
+    code: "",
+    name: "",
+    module: "",
+    stage: "",
+    grade: "",
+    level_based: "",
+    non_modular: ""
+  });
   const [editingUnitId, setEditingUnitId] = useState(null);
 
   // =============================
@@ -36,47 +44,38 @@ const AddUnits = () => {
   // DETERMINE COURSE STRUCTURE TYPE
   // =============================
   const determineCourseStructure = (courseData) => {
-    if (!courseData) return "unknown";
-    
-    // Check course_type field from database
-    if (courseData.course_type) {
-      const courseType = courseData.course_type.toLowerCase();
-      
-      // Handle your database values
-      if (courseType === "non_modular" || courseType === "modular") {
-        setCourseStructureType("modular");
-        return;
-      }
-      if (courseType === "stage_based" || courseType === "stage") {
-        setCourseStructureType("stage");
-        return;
-      }
-    }
-    
-    // Fallback to checking course_name
-    const courseName = courseData.course_name?.toLowerCase() || "";
-    const courseCode = courseData.course_code?.toLowerCase() || "";
-    
-    // Check for modular courses (non_modular in your DB means modular)
-    if (courseName.includes("craft") || 
-        courseName.includes("certificate") ||
-        courseCode.includes("cft") ||
-        courseCode.includes("cert")) {
+    if (!courseData) return;
+
+    const courseType =
+      courseData.course_type?.toLowerCase().trim() || "";
+
+    console.log("Detected type:", courseType);
+
+    if (courseType === "modular") {
       setCourseStructureType("modular");
       return;
     }
-    
-    // Check for stage-based courses
-    if (courseName.includes("diploma") || 
-        courseName.includes("degree") || 
-        courseName.includes("stage") ||
-        courseCode.includes("dip") ||
-        courseCode.includes("deg")) {
+
+    if (courseType === "non_modular") {
+      setCourseStructureType("non_modular");
+      return;
+    }
+
+    if (courseType === "level_based") {
+      setCourseStructureType("level_based");
+      return;
+    }
+
+    if (courseType === "stage_based") {
       setCourseStructureType("stage");
       return;
     }
-    
-    console.warn("Unknown course type for:", courseData);
+
+    if (courseType === "grade_based") {
+      setCourseStructureType("grade");
+      return;
+    }
+
     setCourseStructureType("unknown");
   };
 
@@ -102,15 +101,15 @@ const AddUnits = () => {
   // =============================
   const getModuleOptions = () => {
     if (courseStructureType !== "modular") return [];
-    
+
     const courseName = course.course_name?.toLowerCase() || "";
-    
+
     // Craft courses typically have 2 modules
     if (courseName.includes("craft")) return [1, 2];
     // Certificate courses might have 2-3 modules
-    if (courseName.includes("certificate")) return [1, 2, 3];
+    if (courseName.includes("diploma")) return [1, 2, 3];
     // Default for modular courses
-    return [1, 2, 3, 4];
+    return [1, 2, 3];
   };
 
   // =============================
@@ -118,16 +117,24 @@ const AddUnits = () => {
   // =============================
   const getStageOptions = () => {
     if (courseStructureType !== "stage") return [];
-    
+
     const courseName = course.course_name?.toLowerCase() || "";
-    
+
     // Diploma courses typically have 3 stages
     if (courseName.includes("diploma")) return [1, 2, 3];
-    // Degree courses have 4 stages
-    if (courseName.includes("degree")) return [1, 2, 3, 4];
     // Default for stage-based courses
     return [1, 2, 3];
   };
+  const getLevelBasedOptions = () => {
+    return [1, 2, 3];
+  };
+
+  const getNonModularOptions = () => {
+    return [];
+  };
+
+  const level_basedOptions = getLevelBasedOptions();
+  const non_modular = getNonModularOptions();
 
   const moduleOptions = getModuleOptions();
   const stageOptions = getStageOptions();
@@ -136,8 +143,8 @@ const AddUnits = () => {
   // HANDLE FORM CHANGE
   // =============================
   const handleChange = (e) => {
-    const value = e.target.name === "module" || e.target.name === "stage" 
-      ? Number(e.target.value) 
+    const value = e.target.name === "module" || e.target.name === "stage"
+      ? Number(e.target.value)
       : e.target.value;
     setForm({ ...form, [e.target.name]: value });
   };
@@ -155,7 +162,7 @@ const AddUnits = () => {
       setLoading(false);
       return;
     }
-    
+
     if (courseStructureType === "stage" && !form.stage) {
       alert("Please select a stage/grade");
       setLoading(false);
@@ -170,14 +177,22 @@ const AddUnits = () => {
       course_code: course.course_code || course.code,
     };
 
-    // Add appropriate field based on course structure
     if (courseStructureType === "modular") {
       unitData.module = form.module;
-    } else if (courseStructureType === "stage") {
-      unitData.stage = form.stage;
     }
 
-    console.log("Submitting unit data:", unitData);
+    else if (
+      courseStructureType === "stage" ||
+      courseStructureType === "grade" ||
+      courseStructureType === "level_based" ||
+      courseStructureType === "non_modular"
+    ) {
+      unitData.stage =
+        form.stage ||
+        form.grade ||
+        form.level_based ||
+        form.non_modular;
+    }
 
     try {
       if (editingUnitId) {
@@ -189,9 +204,18 @@ const AddUnits = () => {
         // ADD
         const res = await makeRequest.post("registrar/units/create", unitData);
         setUnits([...units, res.data]);
+        // Switch to edit mode for the newly added unit
+        setEditingUnitId(res.data.unit_id);
+        setForm({
+          code: res.data.unit_code,
+          name: res.data.unit_name,
+          module: res.data.module || "",
+          stage: res.data.stage || "",
+          grade: res.data.stage || "",
+          level_based: res.data.stage || "",
+          non_modular: res.data.stage || ""
+        });
       }
-
-      setForm({ code: "", name: "", module: "", stage: "" });
     } catch (err) {
       console.error("Error saving unit:", err);
       alert("Failed to save unit. Check console for details.");
@@ -205,17 +229,28 @@ const AddUnits = () => {
   // =============================
   const handleEdit = (unit) => {
     setEditingUnitId(unit.unit_id);
-    setForm({ 
-      code: unit.unit_code, 
-      name: unit.unit_name, 
-      module: unit.module || "", 
-      stage: unit.stage || "" 
+    setForm({
+      code: unit.unit_code,
+      name: unit.unit_name,
+      module: unit.module || "",
+      stage: unit.stage || "",
+      grade: unit.stage || "",
+      level_based: unit.stage || "",
+      non_modular: unit.stage || ""
     });
   };
-  
+
   const handleCancelEdit = () => {
     setEditingUnitId(null);
-    setForm({ code: "", name: "", module: "", stage: "" });
+    setForm({
+      code: "",
+      name: "",
+      module: "",
+      stage: "",
+      grade: "",
+      level_based: "",
+      non_modular: ""
+    });
   };
 
   // =============================
@@ -257,12 +292,38 @@ const AddUnits = () => {
         >
           <option value="" disabled>Select Module</option>
           {moduleOptions.map((m) => (
-            <option key={m} value={m}>Module {m}</option>
+            <option key={m} value={m}>
+              Module {m}
+            </option>
           ))}
         </select>
       );
     }
-    
+
+    if (courseStructureType === "non_modular") {
+      return null;
+    }
+
+    if (courseStructureType === "level_based") {
+      return (
+        <select
+          name="level_based"
+          value={form.level_based}
+          onChange={handleChange}
+          required
+          className="rounded-xl border border-sky-200 p-3"
+          disabled={loading || level_basedOptions.length === 0}
+        >
+          <option value="" disabled>Select Level</option>
+          {level_basedOptions.map((s) => (
+            <option key={s} value={s}>
+              Level {s}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
     if (courseStructureType === "stage") {
       return (
         <select
@@ -273,25 +334,45 @@ const AddUnits = () => {
           className="rounded-xl border border-sky-200 p-3"
           disabled={loading || stageOptions.length === 0}
         >
-          <option value="" disabled>Select Stage/Grade</option>
+          <option value="" disabled>Select Stage</option>
           {stageOptions.map((s) => (
-            <option key={s} value={s}>Stage {s}</option>
+            <option key={s} value={s}>
+              Stage {s}
+            </option>
           ))}
         </select>
       );
     }
-    
+
+    if (courseStructureType === "grade") {
+      return (
+        <select
+          name="grade"
+          value={form.grade}
+          onChange={handleChange}
+          required
+          className="rounded-xl border border-sky-200 p-3"
+        >
+          <option value="" disabled>Select Grade</option>
+          <option value="1">Grade 1</option>
+          <option value="2">Grade 2</option>
+          <option value="3">Grade 3</option>
+        </select>
+      );
+    }
+
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
-        ⚠️ Unable to determine course structure. Course type: {course.course_type || "Not set"}
+        ⚠️ Unable to determine course structure. Course type:{" "}
+        {course.course_type || "Not set"}
         <div className="text-xs mt-1">
-          Course Name: {course.course_name || "N/A"}<br/>
+          Course Name: {course.course_name || "N/A"}
+          <br />
           Course Type: {course.course_type || "Not set"}
         </div>
       </div>
     );
   };
-
   // =============================
   // RENDER TABLE HEADER
   // =============================
@@ -308,7 +389,7 @@ const AddUnits = () => {
         </thead>
       );
     }
-    
+
     if (courseStructureType === "stage") {
       return (
         <thead className="bg-sky-100 text-sky-950">
@@ -321,7 +402,7 @@ const AddUnits = () => {
         </thead>
       );
     }
-    
+
     return (
       <thead className="bg-sky-100 text-sky-950">
         <tr>
@@ -343,21 +424,61 @@ const AddUnits = () => {
         <>
           <td className="px-4 py-2">{u.unit_code}</td>
           <td className="px-4 py-2">{u.unit_name}</td>
-          <td className="px-4 py-2">{u.module ? `Module ${u.module}` : "-"}</td>
+          <td className="px-4 py-2">
+            {u.module ? `Module ${u.module}` : "-"}
+          </td>
         </>
       );
     }
-    
+
+    if (courseStructureType === "non_modular") {
+      return (
+        <>
+          <td className="px-4 py-2">{u.unit_code}</td>
+          <td className="px-4 py-2">{u.unit_name}</td>
+          <td className="px-4 py-2">
+            {u.stage ? `Level ${u.stage}` : "-"}
+          </td>
+        </>
+      );
+    }
+
+    if (courseStructureType === "level_based") {
+      return (
+        <>
+          <td className="px-4 py-2">{u.unit_code}</td>
+          <td className="px-4 py-2">{u.unit_name}</td>
+          <td className="px-4 py-2">
+            {u.stage ? `Level ${u.stage}` : "-"}
+          </td>
+        </>
+      );
+    }
+
     if (courseStructureType === "stage") {
       return (
         <>
           <td className="px-4 py-2">{u.unit_code}</td>
           <td className="px-4 py-2">{u.unit_name}</td>
-          <td className="px-4 py-2">{u.stage ? `Stage ${u.stage}` : "-"}</td>
+          <td className="px-4 py-2">
+            {u.stage ? `Stage ${u.stage}` : "-"}
+          </td>
         </>
       );
     }
-    
+
+    if (courseStructureType === "grade") {
+      return (
+        <>
+          <td className="px-4 py-2">{u.unit_code}</td>
+          <td className="px-4 py-2">{u.unit_name}</td>
+          <td className="px-4 py-2">
+            {u.stage ? `Grade ${u.stage}` : "-"}
+          </td>
+        </>
+      );
+    }
+
     return (
       <>
         <td className="px-4 py-2">{u.unit_code}</td>
@@ -370,7 +491,7 @@ const AddUnits = () => {
   // Loading state
   if (!course.course_id && !course.course_name) {
     return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_38%,_#f8fafc_78%)] p-8 flex items-center justify-center">
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_38%,_#f8fafc_78%)] p-4 sm:p-6 lg:p-8 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading course details...</p>
@@ -380,7 +501,7 @@ const AddUnits = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_38%,_#f8fafc_78%)] p-8 flex flex-col">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_38%,_#f8fafc_78%)] p-4 sm:p-6 lg:p-8 flex flex-col">
       {/* Back Button */}
       <button
         onClick={handleBack}
@@ -394,14 +515,28 @@ const AddUnits = () => {
       </h1>
 
       {/* Course Type Indicator */}
-      <div className={`mb-4 inline-block rounded-full px-4 py-1 text-sm font-semibold w-fit ${
-        courseStructureType === "modular" ? "bg-green-100 text-green-700" : 
-        courseStructureType === "stage" ? "bg-purple-100 text-purple-700" : 
-        "bg-red-100 text-red-700"
-      }`}>
-        {courseStructureType === "modular" ? "📚 Modular Course (Non-Modular in DB)" : 
-         courseStructureType === "stage" ? "📈 Stage-Based Course" : 
-         "❓ Unknown Structure"}
+      <div className={`mb-4 inline-block rounded-full px-4 py-1 text-sm font-semibold w-fit ${courseStructureType === "modular" ? "bg-green-100 text-green-700" :
+        courseStructureType === "stage" ? "bg-purple-100 text-purple-700" :
+          "bg-red-100 text-red-700"
+        }`}>
+        {
+          courseStructureType === "modular"
+            ? "📚 Modular Course"
+
+            : courseStructureType === "non_modular"
+              ? "📘 Non Modular Course"
+
+              : courseStructureType === "level_based"
+                ? "🎓 Level Based Course"
+
+                : courseStructureType === "stage"
+                  ? "📈 Stage Based Course"
+
+                  : courseStructureType === "grade"
+                    ? "🏅 Grade Based Course"
+
+                    : "❓ Unknown Structure"
+        }
       </div>
 
       {/* Unit Form */}
@@ -413,7 +548,7 @@ const AddUnits = () => {
           name="code"
           value={form.code}
           onChange={handleChange}
-          placeholder="Unit Code (e.g., BIT101)"
+          placeholder="Unit Code (e.g., 103)"
           required
           className="rounded-xl border border-sky-200 p-3"
           disabled={loading || courseStructureType === "unknown"}
@@ -427,16 +562,16 @@ const AddUnits = () => {
           className="rounded-xl border border-sky-200 p-3"
           disabled={loading || courseStructureType === "unknown"}
         />
-        
+
         {renderLevelSelector()}
-        
+
         <div className="col-span-full flex gap-2">
           <button
             type="submit"
             disabled={loading || courseStructureType === "unknown"}
             className="flex-1 rounded-xl bg-sky-600 p-3 text-white transition hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Saving..." : editingUnitId ? "Save Changes" : "Add Unit"}
+            {loading ? "Saving..." : editingUnitId ? "Save Changes" : "Save"}
           </button>
           {editingUnitId && (
             <button
@@ -484,8 +619,8 @@ const AddUnits = () => {
                     >
                       Delete
                     </button>
-                   </td>
-                 </tr>
+                  </td>
+                </tr>
               ))
             )}
           </tbody>

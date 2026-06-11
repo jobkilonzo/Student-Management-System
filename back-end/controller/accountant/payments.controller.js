@@ -1,4 +1,5 @@
 import db from "../../database/mysql_database.js";
+import { recalculateStudentBalance } from "../../services/studentFees.js";
 
 export const recordFeePayment = async (req, res) => {
   const connection = await db.getConnection();
@@ -18,12 +19,15 @@ export const recordFeePayment = async (req, res) => {
       SELECT
         s.id,
         s.course_id,
-        cf.amount AS current_fee,
+        COALESCE(fees.current_fee, 0) AS current_fee,
         COALESCE(history.total_historical_fees, 0) AS historical_fee_total,
         COALESCE(payments.amount_paid, 0) AS amount_paid
       FROM students s
-      LEFT JOIN course_fees cf
-        ON s.course_id = cf.course_id
+      LEFT JOIN (
+        SELECT student_id, SUM(total_fee) AS current_fee
+        FROM student_fee_balances
+        GROUP BY student_id
+      ) fees ON fees.student_id = s.id
       LEFT JOIN (
         SELECT student_id, SUM(fee_amount) AS total_historical_fees
         FROM student_progressions
@@ -81,35 +85,7 @@ export const recordFeePayment = async (req, res) => {
     );
 
     // 5b️⃣ Update or insert into student_balances
-    const [balanceRows] = await connection.execute(
-      `SELECT id FROM student_balances WHERE student_id = ? AND course_id = ?`,
-      [student_id, student.course_id]
-    );
-
-    if (balanceRows.length) {
-      // Update existing record
-      await connection.execute(
-        `
-        UPDATE student_balances
-        SET amount_paid = amount_paid + ?, 
-            balance = balance - ?, 
-            last_payment_date = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE student_id = ? AND course_id = ?
-        `,
-        [numericAmount, numericAmount, payment_date || new Date(), student_id, student.course_id]
-      );
-    } else {
-      // Insert new record
-      await connection.execute(
-        `
-        INSERT INTO student_balances
-        (student_id, course_id, total_fees, amount_paid, balance, last_payment_date)
-        VALUES (?, ?, ?, ?, ?, ?)
-        `,
-        [student_id, student.course_id, totalFees, numericAmount, newBalance, payment_date || new Date()]
-      );
-    }
+    await recalculateStudentBalance(connection, student_id);
 
     // 6️⃣ Commit
     await connection.commit();

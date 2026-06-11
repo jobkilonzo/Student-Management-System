@@ -76,14 +76,17 @@ export const getTutorClasses = async (req, res) => {
 
 /** Grade calculator */
 const getGrade = (total) => {
-  if (total >= 70) return "A";
-  if (total >= 60) return "B";
-  if (total >= 50) return "C";
-  if (total >= 40) return "D";
-  return "F";
+  if (total >= 90) return "DISTINCTION 1";
+  if (total >= 80) return "DISTINCTION 2";
+  if (total >= 70) return "CREDIT 3";
+  if (total >= 60) return "CREDIT 4";
+  if (total >= 50) return "PASS 5";
+  if (total >= 40) return "PASS 6";
+  if (total > 0) return "REFER";
+  return "ABSENT";
 };
 
-const isAdminOrRegistrar = (role) => ["admin", "registrar"].includes(role);
+const isAdminOrRegistrar = (role) => ["admin", "registrar", "tutor", "exam_officer"].includes(role);
 
 const getPassMarksForUnit = async ({ unitId, courseId, module }) => {
   try {
@@ -105,16 +108,39 @@ const getPassMarksForUnit = async ({ unitId, courseId, module }) => {
 };
 
 const ensureCanAccessUnit = async ({ role, actorId, unitId }) => {
-  if (isAdminOrRegistrar(role)) return { courseId: null, module: null };
+  if (isAdminOrRegistrar(role)) {
+    return {
+      courseId: null,
+      module: null,
+      stage: null,
+    };
+  }
 
   const [assignment] = await db.query(
-    "SELECT course_id, module FROM unit_assignments WHERE tutor_id = ? AND unit_id = ? LIMIT 1",
+    `
+    SELECT
+      course_id,
+      module,
+      stage
+    FROM unit_assignments
+    WHERE tutor_id = ?
+      AND unit_id = ?
+    LIMIT 1
+    `,
     [actorId, Number(unitId)]
   );
+
   if (!assignment.length) {
-    throw makeHttpError(403, { error: "Not assigned to this unit" });
+    throw makeHttpError(403, {
+      error: "Not assigned to this unit",
+    });
   }
-  return { courseId: Number(assignment[0].course_id), module: assignment[0].module ?? null };
+
+  return {
+    courseId: Number(assignment[0].course_id),
+    module: assignment[0].module ?? null,
+    stage: assignment[0].stage ?? null,
+  };
 };
 
 const ensureCanAccessCourse = async ({ role, actorId, courseId }) => {
@@ -126,53 +152,185 @@ const ensureCanAccessCourse = async ({ role, actorId, courseId }) => {
   if (!assignments.length) throw makeHttpError(403, { error: "Not assigned to this course" });
 };
 
-/** Get students + marks for a specific term */
 export const getStudentsForMarks = async (req, res) => {
-  const tutorId = req.user.id;
-  const unitId = Number(req.params.unitId);
-
   try {
-    // 1. Get tutor assignment for this unit
-    const [unitAssignRows] = await db.query(
-      `SELECT course_id FROM unit_assignments WHERE tutor_id=? AND unit_id=?`,
-      [tutorId, unitId]
+    const actorId = req.user?.id;
+    const role = req.user?.role;
+    const { unitId } = req.params;
+    const { term } = req.query;
+
+    if (!actorId || !role) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    if (!unitId || Number.isNaN(Number(unitId))) {
+      return res.status(400).json({ error: "Invalid unitId" });
+    }
+
+    let courseId;
+    let module = null;
+    let stage = null;
+
+    // Resolve unit
+    if (isAdminOrRegistrar(role) || role === "exam_officer") {
+      const [[unit]] = await db.query(
+        `
+        SELECT 
+          unit_id,
+          course_id,
+          module,
+          stage
+        FROM units
+        WHERE unit_id = ?
+        LIMIT 1
+        `,
+        [Number(unitId)]
+      );
+
+      if (!unit) {
+        return res.status(404).json({ error: "Unit not found" });
+      }
+
+      courseId = Number(unit.course_id);
+      module = unit.module ?? null;
+      stage = unit.stage ?? null;
+    } else {
+      const access = await ensureCanAccessUnit({ role, actorId, unitId });
+
+      courseId = access.courseId;
+      module = access.module ?? null;
+      stage = access.stage ?? null;
+    }
+
+    // Get course
+    const [[course]] = await db.query(
+      `
+      SELECT
+        course_id,
+        course_name,
+        course_type
+      FROM courses
+      WHERE course_id = ?
+      LIMIT 1
+      `,
+      [courseId]
     );
-    if (!unitAssignRows.length)
-      return res.status(404).json({ error: "Unit assignment not found" });
 
-    const courseId = Number(unitAssignRows[0].course_id);
+    if (!course) {
+      return res.status(404).json({ error: "Course not found" });
+    }
 
-    // 2. Get students for this course (excluding soft-deleted)
-    const [results] = await db.query(
-      `SELECT 
-         s.id,
-         CONCAT_WS(' ', s.first_name, NULLIF(s.middle_name, ''), s.last_name) AS name,
-         s.reg_no,
-         s.course_id,
-         s.term AS student_term,
-         COALESCE(m.cat_mark, 0) AS cat_mark,
-         COALESCE(m.exam_mark, 0) AS exam_mark,
-         COALESCE(m.total, 0) AS total,
-         COALESCE(m.grade, '-') AS grade,
-         COALESCE(m.attendance, 0) AS attendance
-       FROM students s
-       LEFT JOIN marks m
-         ON m.student_id = s.id AND m.unit_id = ? AND m.term = s.term
-       WHERE s.course_id = ? AND s.deleted_at IS NULL
-       ORDER BY s.reg_no`,
-      [unitId, courseId]
-    );
 
-    res.json({ students: results });
-  } catch (err) {
-    console.error("Error fetching students for marks:", err);
-    res.status(500).json({ error: "Database query failed" });
+    const courseType = (course.course_type || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+
+    const isModuleBased = [
+      "modular",
+    ].includes(courseType);
+
+    const isStageBased = [
+      "stage_based",
+      "level_based",
+      "grade_based",
+    ].includes(courseType);
+    // Validation
+    if (isModuleBased && (module === null || module === undefined || module === "")) {
+      return res.status(400).json({
+        success: false,
+        message: "Module is required for this course",
+      });
+    }
+
+    if (isStageBased && (stage === null || stage === undefined || stage === "")) {
+      return res.status(400).json({
+        success: false,
+        message: "Stage is required for this course",
+      });
+    }
+
+    // Base query
+    let sql = `
+      SELECT
+        s.id,
+        s.reg_no,
+        CONCAT_WS(
+          ' ',
+          s.first_name,
+          NULLIF(s.middle_name, ''),
+          s.last_name
+        ) AS name,
+        m.cat_mark,
+        m.exam_mark,
+        m.total,
+        m.grade,
+        m.attendance
+      FROM students s
+      LEFT JOIN marks m
+        ON m.student_id = s.id
+        AND m.unit_id = ?
+        AND m.term = s.term
+      WHERE s.course_id = ?
+        AND s.deleted_at IS NULL
+    `;
+
+    const params = [Number(unitId), courseId];
+
+    // Module-based filter
+    if (isModuleBased) {
+      sql += " AND s.module = ?";
+      params.push(Number(module));
+    }
+
+    // Stage-based filter
+    if (isStageBased) {
+      sql += " AND s.module = ?";
+      params.push(Number(stage));
+    }
+
+    // Term filter
+    if (term) {
+      sql += " AND s.term = ?";
+      params.push(Number(term));
+    }
+
+    sql += " ORDER BY s.reg_no";
+
+    const [students] = await db.query(sql, params);
+
+    console.log({
+      unitId,
+      role,
+      courseType,
+      module,
+      stage,
+      isModuleBased,
+      isStageBased,
+    });
+    return res.status(200).json({
+      success: true,
+      unit_id: Number(unitId),
+      course_id: courseId,
+      modular: isModuleBased,
+      stage_based: isStageBased,
+      total: students.length,
+      students,
+    });
+  } catch (error) {
+    console.error("getStudentsForMarks error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch students",
+      error: error.message,
+    });
   }
 };
 export const saveMarks = async (req, res) => {
   const { unitId, marks } = req.body;
 
-  if (!unitId || !marks?.length) 
+  if (!unitId || !marks?.length)
     return res.status(400).json({ error: "Missing data" });
 
   try {
@@ -266,6 +424,7 @@ export const getUnitMarksSummary = async (req, res) => {
 
     const passMarks = await getPassMarksForUnit({ unitId, courseId, module });
 
+    // Filter by student_units to only include students registered for this unit
     const [[stats]] = await db.query(
       `SELECT
          COUNT(*) AS total_students,
@@ -275,10 +434,11 @@ export const getUnitMarksSummary = async (req, res) => {
          MAX(m.total) AS max_total,
          SUM(CASE WHEN m.total >= ? THEN 1 ELSE 0 END) AS pass_count
        FROM students s
+       INNER JOIN student_units su ON s.id = su.student_id AND su.unit_id = ?
        LEFT JOIN marks m
          ON m.student_id = s.id AND m.unit_id = ? AND m.term = s.term
        WHERE s.course_id = ? AND s.deleted_at IS NULL`,
-      [passMarks, Number(unitId), courseId]
+      [passMarks, Number(unitId), Number(unitId), courseId]
     );
 
     const [gradeRows] = await db.query(
@@ -289,12 +449,13 @@ export const getUnitMarksSummary = async (req, res) => {
          END AS grade,
          COUNT(*) AS count
        FROM students s
+       INNER JOIN student_units su ON s.id = su.student_id AND su.unit_id = ?
        LEFT JOIN marks m
          ON m.student_id = s.id AND m.unit_id = ? AND m.term = s.term
        WHERE s.course_id = ? AND s.deleted_at IS NULL
        GROUP BY grade
        ORDER BY count DESC`,
-      [Number(unitId), courseId]
+      [Number(unitId), Number(unitId), courseId]
     );
 
     const [students] = await db.query(
@@ -308,11 +469,12 @@ export const getUnitMarksSummary = async (req, res) => {
          COALESCE(m.grade, NULL) AS grade,
          COALESCE(m.attendance, NULL) AS attendance
        FROM students s
+       INNER JOIN student_units su ON s.id = su.student_id AND su.unit_id = ?
        LEFT JOIN marks m
          ON m.student_id = s.id AND m.unit_id = ? AND m.term = s.term
        WHERE s.course_id = ? AND s.deleted_at IS NULL
        ORDER BY s.reg_no`,
-      [Number(unitId), courseId]
+      [Number(unitId), Number(unitId), courseId]
     );
 
     return res.json({
@@ -376,10 +538,11 @@ export const getCourseMarksSummary = async (req, res) => {
            MIN(m.total) AS min_total,
            MAX(m.total) AS max_total
          FROM students s
+         INNER JOIN student_units su ON s.id = su.student_id AND su.unit_id = ?
          LEFT JOIN marks m
            ON m.student_id = s.id AND m.unit_id = ? AND m.term = s.term
          WHERE s.course_id = ? AND s.deleted_at IS NULL`,
-        [Number(u.unit_id), Number(courseId)]
+        [Number(u.unit_id), Number(u.unit_id), Number(courseId)]
       );
 
       summaries.push({
@@ -452,6 +615,7 @@ export const getStudentMarksSummary = async (req, res) => {
     const unitIds = unitRows.map((u) => Number(u.unit_id));
     const placeholders = unitIds.map(() => "?").join(",");
 
+    // Filter marks by student_units to only show marks for units the student is registered for
     const [marks] = await db.query(
       `SELECT
          u.unit_id,
@@ -464,11 +628,12 @@ export const getStudentMarksSummary = async (req, res) => {
          m.attendance,
          m.term
        FROM units u
+       INNER JOIN student_units su ON u.unit_id = su.unit_id AND su.student_id = ?
        LEFT JOIN marks m
          ON m.unit_id = u.unit_id AND m.student_id = ? AND m.term = ?
        WHERE u.unit_id IN (${placeholders})
        ORDER BY u.unit_code`,
-      [Number(studentId), Number(student.term), ...unitIds]
+      [Number(studentId), Number(studentId), Number(student.term), ...unitIds]
     );
 
     const totals = marks.map((m) => (m.total == null ? null : Number(m.total))).filter((t) => t != null);
@@ -687,7 +852,7 @@ export const uploadMarksFile = async (req, res) => {
   }
 };
 
-/** Export marks to CSV (assigned unit only) */
+/** Export marks to CSV (assigned unit only, filtered by student_units) */
 export const exportMarksCsv = async (req, res) => {
   try {
     const actorId = req.user?.id;
@@ -700,6 +865,8 @@ export const exportMarksCsv = async (req, res) => {
     if (!assignment.length) return res.status(403).json({ error: "Not assigned to this unit" });
 
     const courseId = Number(assignment[0].course_id);
+
+    // Filter by student_units to only include students registered for this unit
     const [rows] = await db.query(
       `SELECT 
          s.reg_no,
@@ -711,11 +878,12 @@ export const exportMarksCsv = async (req, res) => {
          COALESCE(m.grade, '-') AS grade,
          COALESCE(m.attendance, 0) AS attendance
        FROM students s
+       INNER JOIN student_units su ON s.id = su.student_id AND su.unit_id = ?
        LEFT JOIN marks m
          ON m.student_id = s.id AND m.unit_id = ? AND m.term = s.term
        WHERE s.course_id = ? AND s.deleted_at IS NULL
        ORDER BY s.reg_no`,
-      [Number(unitId), courseId]
+      [Number(unitId), Number(unitId), courseId]
     );
 
     const parser = new Parser({

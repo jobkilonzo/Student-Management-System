@@ -1,4 +1,4 @@
-// src/pages/RegistrarDashboard/RegistrarDashboard.jsx
+﻿// src/pages/RegistrarDashboard/RegistrarDashboard.jsx
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { makeRequest } from "../../../axios";
@@ -151,6 +151,24 @@ const RegistrarDashboard = () => {
             to="/registrar/attendance"
             description="Take attendance for your assigned units using the existing attendance module."
             icon="📋"
+          />
+          <RegistrarActionCard
+            label="Technical Timetable"
+            to="/registrar/exams/timetable/technical"
+            description="Generate/manage the Technical Courses exam timetable (no sessions)."
+            icon="📅"
+          />
+          <RegistrarActionCard
+            label="Business Timetable"
+            to="/registrar/exams/timetable/business"
+            description="Generate/manage the Business Courses exam timetable (no sessions)."
+            icon="📅"
+          />
+          <RegistrarActionCard
+            label="Exam Cards"
+            to="/registrar/exam-cards"
+            description="Search students and preview exam cards for the current TERM."
+            icon="🪪"
           />
           {isTutor && (
             <RegistrarActionCard

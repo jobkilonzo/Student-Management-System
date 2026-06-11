@@ -360,19 +360,61 @@ export const checkUserDeleted = async (req, res, next) => {
 /** GET ALL ACTIVE USERS (excluding soft deleted) */
 export const getUsers = async (req, res) => {
   try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const offset = (page - 1) * limit;
+    const search = String(req.query.search || "").trim();
+
     const connection = await db.getConnection();
-    const [users] = await connection.execute(
-      `SELECT id, first_name, middle_name, last_name, email, role, gender, created_at 
-       FROM users 
-       WHERE deleted_at IS NULL
-       ORDER BY created_at DESC`
-    );
+
+    let userQuery = `SELECT id, first_name, middle_name, last_name, email, role, gender, created_at
+       FROM users
+       WHERE deleted_at IS NULL`;
+    let countQuery = `SELECT COUNT(*) AS total
+       FROM users
+       WHERE deleted_at IS NULL`;
+    const queryParams = [];
+    const countParams = [];
+
+    if (search) {
+      userQuery += ` AND (
+         first_name LIKE ? OR
+         middle_name LIKE ? OR
+         last_name LIKE ? OR
+         email LIKE ? OR
+         role LIKE ? OR
+         CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name) LIKE ?
+       )`;
+      countQuery += ` AND (
+         first_name LIKE ? OR
+         middle_name LIKE ? OR
+         last_name LIKE ? OR
+         email LIKE ? OR
+         role LIKE ? OR
+         CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name) LIKE ?
+       )`;
+      const likeSearch = `%${search}%`;
+      queryParams.push(likeSearch, likeSearch, likeSearch, likeSearch, likeSearch, likeSearch);
+      countParams.push(likeSearch, likeSearch, likeSearch, likeSearch, likeSearch, likeSearch);
+    }
+
+    userQuery += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    const [users] = await connection.execute(userQuery, queryParams);
+    const [countResult] = await connection.execute(countQuery, countParams);
     connection.release();
-    
+
+    const total = countResult[0]?.total || 0;
+    const pages = Math.max(Math.ceil(total / limit), 1);
     res.status(200).json({
       success: true,
       count: users.length,
-      users
+      users,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages,
+      },
     });
   } catch (err) {
     console.error("Get Users Error:", err);

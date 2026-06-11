@@ -7,11 +7,7 @@ import moment from "moment";
 // ================================
 export const generateTranscript = async (req, res) => {
   const { studentId } = req.params;
-  const { level, term, levelType } = req.query;
-
-  if (!level || !term) {
-    return res.status(400).json({ message: "Level and term are required" });
-  }
+  let { level, term, levelType } = req.query;
 
   try {
     // ================================
@@ -26,125 +22,222 @@ export const generateTranscript = async (req, res) => {
     if (!studentRows.length) {
       return res.status(404).json({ message: "Student not found" });
     }
+
     const student = studentRows[0];
+    term = term ?? student.term;
+    level = level ?? student.module;
+
+    if (!term) {
+      return res.status(400).json({ message: "Term is required" });
+    }
 
     // ================================
     // 2. Fetch course info with type
     // ================================
     const [courseRows] = await db.execute(
-      `SELECT course_name, course_code, course_type FROM courses WHERE course_id = ?`,
+      `SELECT course_name, course_code, course_type
+       FROM courses
+       WHERE course_id = ?`,
       [student.course_id]
     );
+
     const course = courseRows[0] || {};
     const courseType = course.course_type || "modular";
+    const isNonModular = courseType === "non_modular";
+
+    if (!isNonModular && !level) {
+      return res.status(400).json({ message: "Level is required for this course type" });
+    }
 
     // ================================
-    // 3. Determine which level column to use based on course type
+    // 3. Determine level column
     // ================================
-    let levelColumn = "module"; // default
-    switch(courseType) {
+    let levelColumn = "module";
+
+    switch (courseType) {
       case "modular":
         levelColumn = "module";
         break;
       case "stage_based":
         levelColumn = "stage";
         break;
-      case "grade_system":
-        levelColumn = "grade";
+      case "grade_based":
+        levelColumn = "stage";
         break;
       case "level_based":
-        levelColumn = "level";
+        levelColumn = "stage";
         break;
       default:
         levelColumn = "module";
     }
 
     // ================================
-    // 4. Fetch all units for the specific level
+    // 4. Fetch units for level
     // ================================
-    const [unitsRows] = await db.execute(
-      `SELECT unit_id, unit_code, unit_name 
-       FROM units 
-       WHERE course_id = ? AND ${levelColumn} = ?`,
-      [student.course_id, level]
-    );
+    const [unitsRows] = isNonModular
+      ? await db.execute(
+          `SELECT unit_id, unit_code, unit_name
+           FROM units
+           WHERE course_id = ?`,
+          [student.course_id]
+        )
+      : await db.execute(
+          `SELECT unit_id, unit_code, unit_name
+           FROM units
+           WHERE course_id = ?
+           AND ${levelColumn} = ?`,
+          [student.course_id, level]
+        );
 
     // ================================
-    // 5. Fetch student's marks and attendance for the term
+    // 5. Fetch marks
     // ================================
     let marksRows = [];
+
     if (unitsRows.length > 0) {
-      const unitIds = unitsRows.map(u => u.unit_id);
+      const unitIds = unitsRows.map((u) => u.unit_id);
       const placeholders = unitIds.map(() => "?").join(",");
+
       [marksRows] = await db.execute(
         `SELECT unit_id, cat_mark, exam_mark, total, grade, attendance
          FROM marks
-         WHERE student_id = ? AND term = ? AND unit_id IN (${placeholders})`,
+         WHERE student_id = ?
+         AND term = ?
+         AND unit_id IN (${placeholders})`,
         [studentId, term, ...unitIds]
       );
     }
 
     // ================================
-    // 6. Merge units & marks, fill ABS for missing
+    // 6. Merge units & marks
     // ================================
-    const marks = unitsRows.map(unit => {
-      const mark = marksRows.find(m => m.unit_id === unit.unit_id);
+    const marks = unitsRows.map((unit) => {
+      const mark = marksRows.find((m) => m.unit_id === unit.unit_id);
+
       return {
         unit_code: unit.unit_code,
         unit_name: unit.unit_name,
-        cat_mark: mark?.cat_mark != null ? mark.cat_mark : "ABS",
-        exam_mark: mark?.exam_mark != null ? mark.exam_mark : "ABS",
-        total: mark?.total != null ? mark.total : "ABS",
-        grade: mark?.grade || "ABS",
-        attendance: mark?.attendance != null ? mark.attendance : "ABS"
+        cat_mark:
+          mark?.cat_mark !== null && mark?.cat_mark !== undefined
+            ? mark.cat_mark
+            : "ABSENT",
+
+        exam_mark:
+          mark?.exam_mark !== null && mark?.exam_mark !== undefined
+            ? mark.exam_mark
+            : "ABSENT",
+
+        total:
+          mark?.total !== null && mark?.total !== undefined
+            ? mark.total
+            : "ABSENT",
+
+        grade: mark?.grade || "ABSENT",
+
+        attendance:
+          mark?.attendance !== null && mark?.attendance !== undefined
+            ? mark.attendance
+            : "ABSENT",
       };
     });
 
     // ================================
-    // 7. Calculate overall average & attendance
+    // 7. Calculate averages
     // ================================
     const validTotals = marks
-      .filter(m => m.total !== "ABS")
-      .map(m => parseFloat(m.total));
+      .filter((m) => m.total !== "ABSENT")
+      .map((m) => parseFloat(m.total));
 
-    const overallAverage = validTotals.length
-      ? (validTotals.reduce((a, b) => a + b, 0) / validTotals.length).toFixed(2)
-      : null;
+    const overallAverage =
+      validTotals.length > 0
+        ? (
+            validTotals.reduce((a, b) => a + b, 0) /
+            validTotals.length
+          ).toFixed(2)
+        : null;
 
     const validAttendances = marks
-      .filter(m => m.attendance !== "ABS")
-      .map(m => parseFloat(m.attendance));
+      .filter((m) => m.attendance !== "ABSENT")
+      .map((m) => parseFloat(m.attendance));
 
-    const overallAttendance = validAttendances.length > 0
-      ? (validAttendances.reduce((a, b) => a + b, 0) / validAttendances.length).toFixed(2)
-      : 0;
+    const overallAttendance =
+      validAttendances.length > 0
+        ? (
+            validAttendances.reduce((a, b) => a + b, 0) /
+            validAttendances.length
+          ).toFixed(2)
+        : 0;
 
     // ================================
-    // 8. Determine final grade, performance remark & KNEC remark
+    // 8. Final grade & remarks
     // ================================
     let finalGrade = "";
     let performanceRemark = "";
     let knecRemark = "";
 
-    if (overallAverage != null) {
-      if (overallAverage >= 80) finalGrade = "A";
-      else if (overallAverage >= 70) finalGrade = "B";
-      else if (overallAverage >= 60) finalGrade = "C";
-      else if (overallAverage >= 50) finalGrade = "D";
-      else finalGrade = "F";
+    // If even one unit has ABS => CRNM
+    const hasAbs = marks.some(
+      (m) =>
+        m.grade === "ABSENT" ||
+        m.total === "ABSENT" ||
+        m.cat_mark === "ABSENT" ||
+        m.exam_mark === "ABSENT"
+    );
 
-      performanceRemark = overallAverage >= 60 ? "Good Performance" : "Needs Improvement";
+    const hasRefer = marks.some(
+      (m) =>
+        typeof m.grade === "string" &&
+        m.grade.trim().toUpperCase().startsWith("REFER")
+    );
+
+    if (hasAbs) {
+      finalGrade = "CRNM";
+      performanceRemark = "Candidate Has Missing Marks";
+    } else if (hasRefer) {
+      finalGrade = "REFERRED";
+      performanceRemark = "Candidate has one or more referred units";
+    } else if (overallAverage !== null) {
+      const avg = parseFloat(overallAverage);
+
+      if (avg >= 90) {
+        finalGrade = "DISTINCTION 1";
+      } else if (avg >= 80) {
+        finalGrade = "DISTINCTION 2";
+      } else if (avg >= 70) {
+        finalGrade = "CREDIT 3";
+      } else if (avg >= 60) {
+        finalGrade = "CREDIT 4";
+      } else if (avg >= 50) {
+        finalGrade = "PASS 5";
+      } else if (avg >= 40) {
+        finalGrade = "PASS 6";
+      } else {
+        finalGrade = "REFERRED";
+      }
+
+      performanceRemark =
+        avg >= 60
+          ? "Good Performance"
+          : "Needs Improvement";
+    } else {
+      finalGrade = "CRNM";
+      performanceRemark = "No Marks Available";
     }
 
-    knecRemark = overallAttendance < 75
-      ? "Average attendance below 75% - Not eligible to register for KNEC exam"
-      : "Eligible for KNEC exam";
+    // ================================
+    // 9. KNEC remark
+    // ================================
+    knecRemark =
+      overallAttendance < 75
+        ? "Average attendance below 75% - Not eligible to register for KNEC exam"
+        : "Eligible for KNEC exam";
 
     // ================================
-    // 9. Get level display text
+    // 10. Level display text
     // ================================
     const getLevelDisplayText = () => {
-      switch(courseType) {
+      if (isNonModular) return "All Levels";
+      switch (courseType) {
         case "modular":
           return `Module ${level}`;
         case "stage_based":
@@ -159,26 +252,30 @@ export const generateTranscript = async (req, res) => {
     };
 
     // ================================
-    // 10. Send response
+    // 11. Response
     // ================================
     res.status(200).json({
       student: {
-        name: `${student.first_name} ${student.middle_name || ""} ${student.last_name}`.trim(),
+        name:
+          `${student.first_name} ${student.middle_name || ""} ${student.last_name}`.trim(),
+
         regNo: student.reg_no,
         courseId: student.course_id,
         courseName: course.course_name || "-",
         courseCode: course.course_code || "-",
-        courseType: courseType,
-        level: parseInt(level),
+        courseType,
+        level: isNonModular ? null : parseInt(level),
         levelDisplay: getLevelDisplayText(),
         term: parseInt(term),
-        overallAttendance: overallAttendance
+        overallAttendance,
       },
+
       marks,
+
       summary: {
         overallAverage,
         finalGrade,
-        performanceRemark,
+        remarks: performanceRemark,
         knecRemark,
         totalUnits: marks.length,
         generatedAt: moment().format("YYYY-MM-DD HH:mm:ss"),
@@ -186,18 +283,21 @@ export const generateTranscript = async (req, res) => {
     });
   } catch (error) {
     console.error("Transcript Error:", error);
-    res.status(500).json({ message: "Failed to generate transcript", error: error.message });
+
+    res.status(500).json({
+      message: "Failed to generate transcript",
+      error: error.message,
+    });
   }
 };
 
 // ================================
-// Get available levels for a student based on their course
+// Get available levels
 // ================================
 export const getAvailableLevels = async (req, res) => {
   const { studentId } = req.params;
 
   try {
-    // Fetch student with course info
     const [studentRows] = await db.execute(
       `SELECT s.id, s.course_id, c.course_type, c.course_name
        FROM students s
@@ -213,9 +313,9 @@ export const getAvailableLevels = async (req, res) => {
     const student = studentRows[0];
     const courseType = student.course_type || "modular";
 
-    // Get distinct levels for this course based on course type
     let levelColumn = "module";
-    switch(courseType) {
+
+    switch (courseType) {
       case "modular":
         levelColumn = "module";
         break;
@@ -233,39 +333,42 @@ export const getAvailableLevels = async (req, res) => {
     }
 
     const [levelsRows] = await db.execute(
-      `SELECT DISTINCT ${levelColumn} as level_value 
-       FROM units 
-       WHERE course_id = ? 
+      `SELECT DISTINCT ${levelColumn} AS level_value
+       FROM units
+       WHERE course_id = ?
        ORDER BY ${levelColumn} ASC`,
       [student.course_id]
     );
 
-    const availableLevels = levelsRows.map(row => ({
+    const availableLevels = levelsRows.map((row) => ({
       value: row.level_value,
-      label: getLevelLabel(courseType, row.level_value)
+      label: getLevelLabel(courseType, row.level_value),
     }));
 
     res.status(200).json({
       courseType,
       courseName: student.course_name,
-      availableLevels
+      availableLevels,
     });
   } catch (error) {
     console.error("Error fetching available levels:", error);
-    res.status(500).json({ message: "Failed to fetch available levels", error: error.message });
+
+    res.status(500).json({
+      message: "Failed to fetch available levels",
+      error: error.message,
+    });
   }
 };
 
 // ================================
-// Get available terms for a specific level
+// Get available terms
 // ================================
 export const getAvailableTerms = async (req, res) => {
   const { studentId, level } = req.params;
 
   try {
-    // Fetch student with course info
     const [studentRows] = await db.execute(
-      `SELECT s.course_id, c.course_type 
+      `SELECT s.course_id, c.course_type
        FROM students s
        JOIN courses c ON s.course_id = c.course_id
        WHERE s.id = ?`,
@@ -278,30 +381,36 @@ export const getAvailableTerms = async (req, res) => {
 
     const courseType = studentRows[0].course_type || "modular";
 
-    // Define term counts based on course type
     const termCount = courseType === "stage_based" ? 2 : 3;
+
     const availableTerms = [];
 
     for (let i = 1; i <= termCount; i++) {
       availableTerms.push({
         value: i,
-        label: `Term ${i}`
+        label: `Term ${i}`,
       });
     }
 
     res.status(200).json({
       courseType,
-      availableTerms
+      availableTerms,
     });
   } catch (error) {
     console.error("Error fetching available terms:", error);
-    res.status(500).json({ message: "Failed to fetch available terms", error: error.message });
+
+    res.status(500).json({
+      message: "Failed to fetch available terms",
+      error: error.message,
+    });
   }
 };
 
-// Helper function to get level label
+// ================================
+// Helper: Get level label
+// ================================
 const getLevelLabel = (courseType, levelValue) => {
-  switch(courseType) {
+  switch (courseType) {
     case "modular":
       return `Module ${levelValue}`;
     case "stage_based":

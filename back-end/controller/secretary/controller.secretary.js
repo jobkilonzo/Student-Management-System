@@ -2,6 +2,7 @@ import db from "../../database/mysql_database.js";
 import bcrypt from "bcryptjs";
 import moment from "moment";
 import { generateRegNo } from "../auth.controller.js";
+import { applyCourseFeesToStudent } from "../../services/studentFees.js";
 
 const forbiddenSecretaryFields = new Set(["address", "dob", "id_number", "reg_no", "gender"]);
 
@@ -51,6 +52,7 @@ export const registerStudentBySecretary = async (req, res) => {
       id_number,
       module,
       term,
+      selected_fee_ids,
     } = req.body || {};
 
     email = safeLowerEmail(email);
@@ -61,16 +63,6 @@ export const registerStudentBySecretary = async (req, res) => {
     if (!first_name || !last_name || !email || !gender || !course_id) {
       connection.release();
       return res.status(400).json({ error: "first_name, last_name, email, gender, course_id are required" });
-    }
-
-    if (!Number.isFinite(moduleNum) || !Number.isFinite(termNum)) {
-      connection.release();
-      return res.status(400).json({ error: "module and term must be numbers" });
-    }
-
-    if (![1, 2, 3].includes(Number(termNum))) {
-      connection.release();
-      return res.status(400).json({ error: "term must be 1, 2, or 3" });
     }
 
     await connection.beginTransaction();
@@ -86,7 +78,7 @@ export const registerStudentBySecretary = async (req, res) => {
     }
 
     const [courseRows] = await connection.execute(
-      "SELECT course_id, course_code, course_name FROM courses WHERE course_id = ? LIMIT 1",
+      "SELECT course_id, course_code, course_name, course_type FROM courses WHERE course_id = ? LIMIT 1",
       [course_id]
     );
     if (!courseRows.length) {
@@ -95,14 +87,39 @@ export const registerStudentBySecretary = async (req, res) => {
       return res.status(400).json({ error: "Invalid course_id" });
     }
 
-    const courseKind = courseKindFromName(courseRows[0]?.course_name);
-    const allowedModules = courseKind === "craft" ? [1, 2] : [1, 2, 3];
-    if (!allowedModules.includes(Number(moduleNum))) {
+    const courseType = courseRows[0]?.course_type || "modular";
+    const isNonModular = courseType === "non_modular";
+
+    // term is required for all course types
+    if (!Number.isFinite(termNum)) {
       await connection.rollback();
       connection.release();
-      return res.status(400).json({
-        error: courseKind === "craft" ? "For Craft, module must be 1 or 2" : "module must be 1, 2, or 3",
-      });
+      return res.status(400).json({ error: "term must be a number" });
+    }
+
+    if (![1, 2, 3].includes(Number(termNum))) {
+      await connection.rollback();
+      connection.release();
+      return res.status(400).json({ error: "term must be 1, 2, or 3" });
+    }
+
+    // module is only required for modular/stage-based/etc courses
+    if (!isNonModular) {
+      if (!Number.isFinite(moduleNum)) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ error: "module must be a number" });
+      }
+
+      const courseKind = courseKindFromName(courseRows[0]?.course_name);
+      const allowedModules = courseKind === "craft" ? [1, 2] : [1, 2, 3];
+      if (!allowedModules.includes(Number(moduleNum))) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({
+          error: courseKind === "craft" ? "For Craft, module must be 1 or 2" : "module must be 1, 2, or 3",
+        });
+      }
     }
 
     const temp_password = makeTempPassword();
@@ -133,7 +150,7 @@ export const registerStudentBySecretary = async (req, res) => {
         last_name,
         email,
         course_id,
-        Number(moduleNum),
+        isNonModular ? null : Number(moduleNum),
         Number(termNum),
         safeNull(phone),
         safeNull(address),
@@ -148,6 +165,23 @@ export const registerStudentBySecretary = async (req, res) => {
     );
 
     const student_id = studentResult.insertId;
+
+    const hasSelectedFeeIds = Object.prototype.hasOwnProperty.call(req.body || {}, "selected_fee_ids");
+    const selectedFeeIds = Array.isArray(selected_fee_ids)
+      ? selected_fee_ids
+      : selected_fee_ids
+        ? String(selected_fee_ids).split(",")
+        : [];
+
+    const appliedFees = await applyCourseFeesToStudent(connection, {
+      studentId: student_id,
+      courseId: course_id,
+      module: isNonModular ? null : Number(moduleNum),
+      term: Number(termNum),
+      selectedFeeIds,
+      actorId,
+      applyAllWhenEmpty: !hasSelectedFeeIds,
+    });
 
     await connection.execute(
       `INSERT INTO audit_logs (user_id, action, target_id, details, created_at)
@@ -170,6 +204,7 @@ export const registerStudentBySecretary = async (req, res) => {
       reg_no,
       temp_password,
       must_change_password: true,
+      fees_applied: appliedFees.applied,
     });
   } catch (err) {
     await connection.rollback();
@@ -183,8 +218,31 @@ export const getStudentsBySecretary = async (req, res) => {
   try {
     const search = String(req.query.search || "").trim();
     const course_id = req.query.course_id ? Number(req.query.course_id) : null;
-    const module = req.query.module ? String(req.query.module).trim() : null;
-    const term = req.query.term ? String(req.query.term).trim() : null;
+
+    // parse module: allow numeric module or 'non-modular' (meaning module IS NULL)
+    const rawModule = req.query.module;
+    let module = null;
+    let moduleIsNonModular = false;
+    if (rawModule !== undefined && rawModule !== null && String(rawModule).trim() !== "") {
+      const mstr = String(rawModule).trim();
+      const ml = mstr.toLowerCase();
+      if (ml === "non-modular" || ml === "non modular" || ml === "non-modulars" || ml === "non modulars" || ml === "nonmodular") {
+        moduleIsNonModular = true;
+      } else {
+        const mnum = Number(mstr);
+        if (!Number.isFinite(mnum)) return res.status(400).json({ error: "module must be a number or 'non-modular'" });
+        module = mnum;
+      }
+    }
+
+    // parse term: must be a number when provided
+    const rawTerm = req.query.term;
+    let term = null;
+    if (rawTerm !== undefined && rawTerm !== null && String(rawTerm).trim() !== "") {
+      const tnum = Number(String(rawTerm).trim());
+      if (!Number.isFinite(tnum)) return res.status(400).json({ error: "term must be a number" });
+      term = tnum;
+    }
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(5, parseInt(req.query.limit, 10) || 10));
@@ -194,8 +252,9 @@ export const getStudentsBySecretary = async (req, res) => {
     const params = [];
 
     if (course_id) { where.push("s.course_id = ?"); params.push(course_id); }
-    if (module) { where.push("s.module = ?"); params.push(module); }
-    if (term) { where.push("s.term = ?"); params.push(term); }
+    if (moduleIsNonModular) { where.push("s.module IS NULL"); }
+    else if (module !== null) { where.push("s.module = ?"); params.push(module); }
+    if (term !== null) { where.push("s.term = ?"); params.push(term); }
 
     if (search) {
       where.push(`(
@@ -259,6 +318,7 @@ export const getStudentsBySecretary = async (req, res) => {
 export const getStudentByIdForSecretary = async (req, res) => {
   try {
     const { id } = req.params;
+
     const [rows] = await db.execute(
       `
       SELECT
@@ -270,14 +330,22 @@ export const getStudentByIdForSecretary = async (req, res) => {
         c.course_name,
         c.course_code
       FROM students s
-      LEFT JOIN users u ON u.id = s.user_id
-      LEFT JOIN courses c ON c.course_id = s.course_id
-      WHERE s.id = ? AND s.deleted_at IS NULL
+      LEFT JOIN users u
+        ON u.id = s.user_id
+      LEFT JOIN courses c
+        ON c.course_id = s.course_id
+      WHERE s.id = ?
+        AND s.deleted_at IS NULL
       LIMIT 1
       `,
       [Number(id)]
     );
-    if (!rows.length) return res.status(404).json({ error: "Student not found" });
+
+    if (!rows.length) {
+      return res.status(404).json({
+        error: "Student not found",
+      });
+    }
 
     const student = rows[0];
 
@@ -292,22 +360,34 @@ export const getStudentByIdForSecretary = async (req, res) => {
         u.unit_code,
         u.unit_name,
         CASE
-          WHEN m.id IS NULL THEN 'Pending'
-          WHEN COALESCE(m.exam_mark, 0) > 0 OR COALESCE(m.total, 0) > 0 THEN 'Completed'
-          ELSE 'In Progress'
+          WHEN COALESCE(m.exam_mark, 0) > 0
+            OR COALESCE(m.total, 0) > 0
+          THEN 'Completed'
+          ELSE su.status
         END AS status
       FROM student_units su
-      JOIN units u ON u.unit_id = su.unit_id
-      LEFT JOIN marks m ON m.student_id = su.student_id AND m.unit_id = su.unit_id AND m.term = ?
+      JOIN units u
+        ON u.unit_id = su.unit_id
+      LEFT JOIN marks m
+        ON m.student_id = su.student_id
+        AND m.unit_id = su.unit_id
+        AND m.term = su.term
       WHERE su.student_id = ?
       ORDER BY u.unit_code
       `,
-      [Number(student.term || 1), Number(id)]
+      [Number(id)]
     );
 
     const [notifications] = await db.execute(
       `
-      SELECT id, type, title, message, is_read, created_at, created_by
+      SELECT
+        id,
+        type,
+        title,
+        message,
+        is_read,
+        created_at,
+        created_by
       FROM student_notifications
       WHERE student_id = ?
       ORDER BY created_at DESC
@@ -316,10 +396,19 @@ export const getStudentByIdForSecretary = async (req, res) => {
       [Number(id)]
     );
 
-    return res.json({ success: true, student, units, notifications });
+    return res.json({
+      success: true,
+      student,
+      units,
+      notifications,
+    });
+
   } catch (err) {
     console.error("Secretary get student by id error:", err);
-    return res.status(500).json({ error: "Server error" });
+
+    return res.status(500).json({
+      error: "Server error",
+    });
   }
 };
 
@@ -519,65 +608,198 @@ export const updateStudentBySecretary = async (req, res) => {
 
 export const assignUnitsToStudent = async (req, res) => {
   const connection = await db.getConnection();
+
   try {
     const actorId = req.user?.id;
-    const { id } = req.params; // student_id
+    const studentId = Number(req.params.id);
 
     await connection.beginTransaction();
 
+    /**
+     * STEP 1: FETCH STUDENT
+     */
     const [studentRows] = await connection.execute(
-      "SELECT id, course_id, module, term, deleted_at FROM students WHERE id = ? LIMIT 1 FOR UPDATE",
-      [Number(id)]
+      `
+      SELECT
+        s.id,
+        s.course_id,
+        s.module,
+        s.term,
+        s.deleted_at,
+        c.course_type
+      FROM students s
+      LEFT JOIN courses c ON c.course_id = s.course_id
+      WHERE s.id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [studentId]
     );
+
     if (!studentRows.length || studentRows[0].deleted_at) {
       await connection.rollback();
-      connection.release();
       return res.status(404).json({ error: "Student not found" });
     }
 
     const student = studentRows[0];
     const courseId = Number(student.course_id);
-    const module = student.module != null ? Number(student.module) : null;
-    const term = student.term != null ? Number(student.term) : null;
 
-    const [units] = await connection.execute(
-      module == null
-        ? "SELECT unit_id FROM units WHERE course_id = ? ORDER BY unit_code"
-        : "SELECT unit_id FROM units WHERE course_id = ? AND (module IS NULL OR module = ?) ORDER BY unit_code",
-      module == null ? [courseId] : [courseId, module]
-    );
+    const courseType = String(student.course_type || "").toLowerCase();
+    const isModular = [
+      "modular",
+      "grade_based",
+      "stage_based",
+      "level_based",
+    ].includes(courseType);
+
+    const module =
+      student.module !== null && student.module !== undefined
+        ? Number(student.module)
+        : null;
+
+    const term =
+      student.term !== null && student.term !== undefined
+        ? Number(student.term)
+        : null;
+
+
+
+    /**
+     * STEP 2: VALIDATION
+     */
+    if (isModular && (!module || Number.isNaN(module))) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: "Module is required for modular courses",
+      });
+    }
+
+    /**
+     * STEP 3: FETCH UNITS (FIXED - NO DISTINCT ISSUE)
+     */
+    let unitsQuery = `
+      SELECT unit_id, unit_code
+      FROM units
+      WHERE course_id = ?
+    `;
+
+    const queryParams = [courseId];
+
+    if (isModular) {
+      unitsQuery += ` AND module = ? `;
+      queryParams.push(module);
+    } else {
+      unitsQuery += ` AND (module IS NULL OR module = '') `;
+    }
+
+    unitsQuery += ` ORDER BY unit_code ASC `;
+
+    const [units] = await connection.execute(unitsQuery, queryParams);
 
     if (!units.length) {
       await connection.rollback();
-      connection.release();
-      return res.status(400).json({ error: "No units found for student's course/module" });
+      return res.status(400).json({ error: "No matching units found" });
     }
 
+    /**
+     * STEP 4: CHECK EXISTING ASSIGNMENTS
+     */
+    const [existingUnits] = await connection.execute(
+      `
+      SELECT unit_id
+      FROM student_units
+      WHERE student_id = ?
+      `,
+      [studentId]
+    );
+
+    const existingUnitIds = new Set(
+      existingUnits.map((u) => Number(u.unit_id))
+    );
+
+    /**
+     * STEP 5: INSERT UNITS
+     */
     let inserted = 0;
-    for (const u of units) {
-      // eslint-disable-next-line no-await-in-loop
+
+    for (const unit of units) {
+      const unitId = Number(unit.unit_id);
+
+      if (existingUnitIds.has(unitId)) continue;
+
       const [result] = await connection.execute(
-        `INSERT IGNORE INTO student_units (student_id, unit_id, module, term, status, assigned_by)
-         VALUES (?, ?, ?, ?, 'Pending', ?)`,
-        [Number(id), Number(u.unit_id), module, term, actorId]
+        `
+        INSERT INTO student_units (
+          student_id,
+          unit_id,
+          module,
+          term,
+          status,
+          assigned_by
+        )
+        VALUES (?, ?, ?, ?, 'In Progress', ?)
+        `,
+        [
+          studentId,
+          unitId,
+          isModular ? module : null,
+          term,
+          actorId,
+        ]
       );
-      if (result.affectedRows > 0) inserted += 1;
+
+      if (result.affectedRows > 0) inserted++;
     }
 
+    /**
+     * STEP 6: AUDIT LOG
+     */
     await connection.execute(
-      `INSERT INTO audit_logs (user_id, action, target_id, details, created_at)
-       VALUES (?, ?, ?, ?, NOW())`,
-      [actorId, "ASSIGN_UNITS", Number(id), JSON.stringify({ student_id: Number(id), units_count: inserted, module, term })]
+      `
+      INSERT INTO audit_logs (
+        user_id,
+        action,
+        target_id,
+        details,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, NOW())
+      `,
+      [
+        actorId,
+        "ASSIGN_UNITS",
+        studentId,
+        JSON.stringify({
+          student_id: studentId,
+          course_id: courseId,
+          module,
+          term,
+          is_modular: isModular,
+          units_assigned: inserted,
+        }),
+      ]
     );
 
     await connection.commit();
-    connection.release();
-    return res.json({ success: true, message: "Units assigned", assigned: inserted });
+
+    return res.json({
+      success: true,
+      message: "Units assigned successfully",
+      assigned: inserted,
+    });
+
   } catch (err) {
     await connection.rollback();
-    connection.release();
+
     console.error("Assign units error:", err);
-    return res.status(500).json({ error: "Server error", details: err.message });
+
+    return res.status(500).json({
+      error: "Server error",
+      details: err.message,
+    });
+
+  } finally {
+    connection.release();
   }
 };
 
@@ -592,29 +814,39 @@ export const getStudentUnits = async (req, res) => {
         su.unit_id,
         su.module,
         su.term,
+        su.status AS assigned_status,
         u.unit_code,
         u.unit_name,
         CASE
-          WHEN m.id IS NULL THEN 'Pending'
-          WHEN COALESCE(m.exam_mark, 0) > 0 OR COALESCE(m.total, 0) > 0 THEN 'Completed'
-          ELSE 'In Progress'
+          WHEN COALESCE(m.exam_mark, 0) > 0
+            OR COALESCE(m.total, 0) > 0
+          THEN 'Completed'
+          ELSE su.status
         END AS status
       FROM student_units su
-      JOIN units u ON u.unit_id = su.unit_id
+      JOIN units u
+        ON u.unit_id = su.unit_id
       LEFT JOIN marks m
-        ON m.student_id = su.student_id AND m.unit_id = su.unit_id AND m.term = (
-          SELECT COALESCE(term, 1) FROM students WHERE id = su.student_id LIMIT 1
-        )
+        ON m.student_id = su.student_id
+        AND m.unit_id = su.unit_id
+        AND m.term = su.term
       WHERE su.student_id = ?
       ORDER BY u.unit_code
       `,
       [Number(id)]
     );
 
-    return res.json({ success: true, units: rows });
+    return res.json({
+      success: true,
+      units: rows,
+    });
+
   } catch (err) {
     console.error("Get student units error:", err);
-    return res.status(500).json({ error: "Server error" });
+
+    return res.status(500).json({
+      error: "Server error",
+    });
   }
 };
 
@@ -622,14 +854,37 @@ export const exportStudentListCsv = async (req, res) => {
   try {
     const actorId = req.user?.id;
     const course_id = req.query.course_id ? Number(req.query.course_id) : null;
-    const module = req.query.module ? String(req.query.module) : null;
-    const term = req.query.term ? String(req.query.term) : null;
+
+    // parse module/term for export: support numeric or 'non-modular'
+    const rawModule = req.query.module;
+    let module = null;
+    let moduleIsNonModular = false;
+    if (rawModule !== undefined && rawModule !== null && String(rawModule).trim() !== "") {
+      const mstr = String(rawModule).trim();
+      const ml = mstr.toLowerCase();
+      if (ml === "non-modular" || ml === "non modular" || ml === "non-modulars" || ml === "non modulars" || ml === "nonmodular") {
+        moduleIsNonModular = true;
+      } else {
+        const mnum = Number(mstr);
+        if (!Number.isFinite(mnum)) return res.status(400).json({ error: "module must be a number or 'non-modular'" });
+        module = mnum;
+      }
+    }
+
+    const rawTerm = req.query.term;
+    let term = null;
+    if (rawTerm !== undefined && rawTerm !== null && String(rawTerm).trim() !== "") {
+      const tnum = Number(String(rawTerm).trim());
+      if (!Number.isFinite(tnum)) return res.status(400).json({ error: "term must be a number" });
+      term = tnum;
+    }
 
     const where = ["s.deleted_at IS NULL"];
     const params = [];
     if (course_id) { where.push("s.course_id = ?"); params.push(course_id); }
-    if (module) { where.push("s.module = ?"); params.push(module); }
-    if (term) { where.push("s.term = ?"); params.push(term); }
+    if (moduleIsNonModular) { where.push("s.module IS NULL"); }
+    else if (module !== null) { where.push("s.module = ?"); params.push(module); }
+    if (term !== null) { where.push("s.term = ?"); params.push(term); }
 
     const [rows] = await db.execute(
       `
@@ -676,14 +931,37 @@ export const exportStudentListPdfData = async (req, res) => {
   try {
     const actorId = req.user?.id;
     const course_id = req.query.course_id ? Number(req.query.course_id) : null;
-    const module = req.query.module ? String(req.query.module) : null;
-    const term = req.query.term ? String(req.query.term) : null;
+
+    // parse module/term for export: support numeric or 'non-modular'
+    const rawModule = req.query.module;
+    let module = null;
+    let moduleIsNonModular = false;
+    if (rawModule !== undefined && rawModule !== null && String(rawModule).trim() !== "") {
+      const mstr = String(rawModule).trim();
+      const ml = mstr.toLowerCase();
+      if (ml === "non-modular" || ml === "non modular" || ml === "non-modulars" || ml === "non modulars" || ml === "nonmodular") {
+        moduleIsNonModular = true;
+      } else {
+        const mnum = Number(mstr);
+        if (!Number.isFinite(mnum)) return res.status(400).json({ error: "module must be a number or 'non-modular'" });
+        module = mnum;
+      }
+    }
+
+    const rawTerm = req.query.term;
+    let term = null;
+    if (rawTerm !== undefined && rawTerm !== null && String(rawTerm).trim() !== "") {
+      const tnum = Number(String(rawTerm).trim());
+      if (!Number.isFinite(tnum)) return res.status(400).json({ error: "term must be a number" });
+      term = tnum;
+    }
 
     const where = ["s.deleted_at IS NULL"];
     const params = [];
     if (course_id) { where.push("s.course_id = ?"); params.push(course_id); }
-    if (module) { where.push("s.module = ?"); params.push(module); }
-    if (term) { where.push("s.term = ?"); params.push(term); }
+    if (moduleIsNonModular) { where.push("s.module IS NULL"); }
+    else if (module !== null) { where.push("s.module = ?"); params.push(module); }
+    if (term !== null) { where.push("s.term = ?"); params.push(term); }
 
     const [rows] = await db.execute(
       `

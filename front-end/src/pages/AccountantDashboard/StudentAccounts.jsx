@@ -17,6 +17,9 @@ const StudentAccounts = () => {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [feeTypes, setFeeTypes] = useState([]);
+  const [feeEditor, setFeeEditor] = useState(null);
+  const [savingFees, setSavingFees] = useState(false);
 
   // Load student accounts and balances
   const loadAccounts = async () => {
@@ -39,7 +42,18 @@ const StudentAccounts = () => {
 
   useEffect(() => {
     loadAccounts();
+    loadFeeTypes();
   }, []);
+
+  const loadFeeTypes = async () => {
+    try {
+      const res = await makeRequest.get("/accountant/fee-types");
+      setFeeTypes(res.data || []);
+    } catch (err) {
+      console.error("Failed to load fee types:", err);
+      setFeeTypes([]);
+    }
+  };
 
   // Filter accounts by search
   const filteredAccounts = useMemo(() => {
@@ -59,6 +73,93 @@ const StudentAccounts = () => {
 
   // Compute balance helper
   const computeBalance = (account) => (account.total_fees || 0) - (account.amount_paid || 0);
+
+  const openFeeEditor = (account) => {
+    const existing = Array.isArray(account.fee_breakdown) ? account.fee_breakdown : [];
+    setFeeEditor({
+      student: account,
+      items: existing.length
+        ? existing.map((item) => ({
+            fee_type_id: String(item.fee_type_id || ""),
+            fee_type_name: item.fee_type_name || "",
+            term: String(item.term || account.term || ""),
+            module: item.module === null || item.module === undefined ? "" : String(item.module),
+            total_fee: String(item.total_fee || 0),
+          }))
+        : [
+            {
+              fee_type_id: "",
+              fee_type_name: "",
+              term: String(account.term || ""),
+              module: account.module === null || account.module === undefined ? "" : String(account.module),
+              total_fee: "",
+            },
+          ],
+    });
+  };
+
+  const updateFeeEditorItem = (index, key, value) => {
+    setFeeEditor((prev) => ({
+      ...prev,
+      items: prev.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [key]: value } : item
+      ),
+    }));
+  };
+
+  const addFeeEditorItem = () => {
+    setFeeEditor((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          fee_type_id: "",
+          fee_type_name: "",
+          term: String(prev.student.term || ""),
+          module: prev.student.module === null || prev.student.module === undefined ? "" : String(prev.student.module),
+          total_fee: "",
+        },
+      ],
+    }));
+  };
+
+  const removeFeeEditorItem = (index) => {
+    setFeeEditor((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, itemIndex) => itemIndex !== index),
+    }));
+  };
+
+  const saveStudentFees = async () => {
+    if (!feeEditor?.student?.id) return;
+
+    const feeItems = feeEditor.items.map((item) => ({
+      fee_type_id: Number(item.fee_type_id),
+      term: item.term ? Number(item.term) : Number(feeEditor.student.term),
+      module: item.module === "" ? null : Number(item.module),
+      total_fee: Number(item.total_fee),
+    }));
+
+    if (feeItems.some((item) => !item.fee_type_id || Number.isNaN(item.total_fee) || item.total_fee < 0)) {
+      setError("Each fee row needs a fee type and a valid amount.");
+      return;
+    }
+
+    try {
+      setSavingFees(true);
+      setError("");
+      await makeRequest.put(`/accountant/student-balances/${feeEditor.student.id}/fees`, {
+        fee_items: feeItems,
+      });
+      setFeeEditor(null);
+      await loadAccounts();
+    } catch (err) {
+      console.error("Failed to update student fees:", err);
+      setError(err?.response?.data?.error || "Failed to update student fees.");
+    } finally {
+      setSavingFees(false);
+    }
+  };
 
   // Handle fee payment
   const handleRecordPayment = async (e) => {
@@ -203,6 +304,7 @@ const StudentAccounts = () => {
                   <th className="pb-3 font-semibold">Balance</th>
                   <th className="pb-3 font-semibold">Last Payment</th>
                   <th className="pb-3 font-semibold">Status</th>
+                  <th className="pb-3 font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -237,6 +339,14 @@ const StudentAccounts = () => {
                         {account.status}
                       </span>
                     </td>
+                    <td className="py-4">
+                      <button
+                        onClick={() => openFeeEditor(account)}
+                        className="rounded-xl bg-teal-100 px-3 py-1.5 text-sm font-semibold text-teal-700 transition hover:bg-teal-200"
+                      >
+                        Edit Fees
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -260,6 +370,97 @@ const StudentAccounts = () => {
               ))}
             </div>
           </section>
+        )}
+
+        {feeEditor && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+            <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-xl">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Edit Student Fees</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {feeEditor.student.student_name} ({feeEditor.student.reg_no})
+                  </p>
+                </div>
+                <button
+                  onClick={() => setFeeEditor(null)}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {feeEditor.items.map((item, index) => (
+                  <div key={`${item.fee_type_id}-${index}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_0.7fr_0.7fr_0.8fr_auto]">
+                    <select
+                      value={item.fee_type_id}
+                      onChange={(e) => updateFeeEditorItem(index, "fee_type_id", e.target.value)}
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-teal-600"
+                    >
+                      <option value="">Fee type</option>
+                      {feeTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.module}
+                      onChange={(e) => updateFeeEditorItem(index, "module", e.target.value)}
+                      placeholder="Module"
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-teal-600"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.term}
+                      onChange={(e) => updateFeeEditorItem(index, "term", e.target.value)}
+                      placeholder="Term"
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-teal-600"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.total_fee}
+                      onChange={(e) => updateFeeEditorItem(index, "total_fee", e.target.value)}
+                      placeholder="Amount"
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none focus:border-teal-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeFeeEditorItem(index)}
+                      disabled={feeEditor.items.length === 1}
+                      className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 flex flex-wrap justify-between gap-3 border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  onClick={addFeeEditorItem}
+                  className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-semibold text-teal-700 hover:bg-teal-100"
+                >
+                  Add Fee Row
+                </button>
+                <button
+                  type="button"
+                  onClick={saveStudentFees}
+                  disabled={savingFees}
+                  className="rounded-xl bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
+                >
+                  {savingFees ? "Saving..." : "Save Fees"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
       </div>

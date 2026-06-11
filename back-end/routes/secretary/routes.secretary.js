@@ -19,6 +19,7 @@ import {
 } from "../../controller/secretary/controller.secretary.js";
 import { getStudentBalances } from "../../controller/accountant/balances.controller.js";
 import { recordFeePayment } from "../../controller/accountant/payments.controller.js";
+import { getCourseFees } from "../../controller/accountant/courseFees.controller.js";
 
 const router = Router();
 
@@ -29,6 +30,7 @@ router.get("/dashboard", getSecretaryDashboard);
 
 // Courses (reuse registrar controller)
 router.get("/courses", getCourses);
+router.get("/course-fees", getCourseFees);
 
 // Students
 router.post("/students/register", registerStudentBySecretary);

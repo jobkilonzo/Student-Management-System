@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
 :root {
   --brand-sky-50: #f0f9ff;
   --brand-sky-100: #e0f2fe;

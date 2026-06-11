@@ -4,9 +4,9 @@ import { authenticateToken, authorizeRoles } from "../../middleware/auth.js";
 
 const router = express.Router();
 
-// All routes require authentication and registrar/admin role
+// All routes require authentication and registrar/admin/exam_officer role
 router.use(authenticateToken);
-router.use(authorizeRoles("registrar", "admin"));
+router.use(authorizeRoles("registrar", "admin", "exam_officer"));
 
 // Generate transcript
 router.get("/transcript/:studentId", generateTranscript);

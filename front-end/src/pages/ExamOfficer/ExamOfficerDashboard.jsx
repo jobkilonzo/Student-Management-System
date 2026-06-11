@@ -19,20 +19,20 @@ const ExamOfficerDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 p-6">
-      <div className="bg-white rounded-xl shadow-md p-6 max-w-5xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">Examination Officer Dashboard</h1>
-          <div className="flex gap-2">
+    <div className="min-h-screen bg-slate-100 p-4 sm:p-6">
+      <div className="bg-white rounded-xl shadow-md p-4 sm:p-6 max-w-5xl mx-auto">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold">Examination Officer Dashboard</h1>
+          <div className="flex flex-col sm:flex-row gap-2">
             <button
               onClick={() => navigate("/account")}
-              className="bg-white text-slate-800 px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50"
+              className="w-full sm:w-auto bg-white text-slate-800 px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50"
             >
               My Account
             </button>
             <button
               onClick={handleLogout}
-              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg"
+              className="w-full sm:w-auto bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg"
             >
               Logout
             </button>
@@ -66,6 +66,30 @@ const ExamOfficerDashboard = () => {
           >
             <h2 className="text-xl font-semibold">Attendance</h2>
             <p className="text-gray-600">Take and review attendance for assigned units.</p>
+          </div>
+
+          <div
+            className="bg-blue-50 border border-blue-200 rounded-lg p-5 cursor-pointer hover:border-blue-400"
+            onClick={() => navigate("/registrar/exams/timetable/technical")}
+          >
+            <h2 className="text-xl font-semibold">Technical Timetable</h2>
+            <p className="text-gray-600">Generate/manage Technical Courses exam timetable.</p>
+          </div>
+
+          <div
+            className="bg-blue-50 border border-blue-200 rounded-lg p-5 cursor-pointer hover:border-blue-400"
+            onClick={() => navigate("/registrar/exams/timetable/business")}
+          >
+            <h2 className="text-xl font-semibold">Business Timetable</h2>
+            <p className="text-gray-600">Generate/manage Business Courses exam timetable.</p>
+          </div>
+
+          <div
+            className="bg-blue-50 border border-blue-200 rounded-lg p-5 cursor-pointer hover:border-blue-400"
+            onClick={() => navigate("/registrar/transcript")}
+          >
+            <h2 className="text-xl font-semibold">Generate Transcript</h2>
+            <p className="text-gray-600">Create and preview student transcripts with exam officer access.</p>
           </div>
         </div>
       </div>

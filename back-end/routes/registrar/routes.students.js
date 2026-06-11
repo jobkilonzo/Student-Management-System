@@ -29,18 +29,19 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// All routes require authentication and registrar/admin role
+// All routes require authentication
 router.use(authenticateToken);
-router.use(authorizeRoles("registrar", "admin"));
 
-// Use upload.single("photo") for photo field
-router.post("/create", upload.single("photo"), addStudent);
-router.get("/", getStudents);
-router.get("/:id", getStudentById);
-router.put("/:id", upload.single("photo"), updateStudent);
-router.delete("/:id", deleteStudent);
+// Students list and details may also be viewed by exam officers for transcript generation
+router.get("/", authorizeRoles("registrar", "admin", "exam_officer"), getStudents);
+router.get("/:id", authorizeRoles("registrar", "admin", "exam_officer"), getStudentById);
+
+// Registrar/admin-only student management
+router.post("/create", authorizeRoles("registrar", "admin"), upload.single("photo"), addStudent);
+router.put("/:id", authorizeRoles("registrar", "admin"), upload.single("photo"), updateStudent);
+router.delete("/:id", authorizeRoles("registrar", "admin"), deleteStudent);
 
 // Bulk import
-router.post("/import", upload.single("file"), importStudentsExcel);
+router.post("/import", authorizeRoles("registrar", "admin"), upload.single("file"), importStudentsExcel);
 
 export default router;

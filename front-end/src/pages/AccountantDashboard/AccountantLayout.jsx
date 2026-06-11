@@ -21,7 +21,7 @@ const AccountantLayout = ({ title, subtitle, children }) => {
   return (
     <div className="min-h-screen bg-slate-100">
       <header className="bg-gradient-to-r from-emerald-700 via-teal-700 to-cyan-700 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-5 sm:px-6 sm:py-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm uppercase tracking-[0.35em] text-emerald-100">Finance Office</p>
             <h1 className="text-3xl font-bold">{title}</h1>
@@ -54,7 +54,7 @@ const AccountantLayout = ({ title, subtitle, children }) => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">{children}</main>
+      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 sm:py-8">{children}</main>
     </div>
   );
 };

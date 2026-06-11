@@ -10,11 +10,11 @@ import PortalItem from "../components/PortalItem";
 
 const Home = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-indigo-100 p-10">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-indigo-100 p-4 sm:p-10">
       
       {/* Header */}
       <div className="text-center mb-14">
-        <h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-800 tracking-tight">
           Student Management System
         </h1>
         <p className="text-slate-600 mt-3 max-w-2xl mx-auto">

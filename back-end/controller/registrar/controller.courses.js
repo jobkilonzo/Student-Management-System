@@ -4,7 +4,7 @@ import moment from "moment";
 // CREATE course
 export const addCourse = async (req, res) => {
   try {
-    const { course_code, course_name, course_type } = req.body;
+    const { course_code, course_name, course_type, course_category = 'Technical' } = req.body;
     
     // Validate required fields
     if (!course_code || !course_name || !course_type) {
@@ -21,6 +21,13 @@ export const addCourse = async (req, res) => {
       });
     }
 
+    const validCourseCategories = ['Technical', 'Business'];
+    if (!validCourseCategories.includes(course_category)) {
+      return res.status(400).json({ 
+        error: "Invalid course category. Must be Technical or Business" 
+      });
+    }
+
     // Check if course already exists
     const [existing] = await db.execute(
       "SELECT course_id FROM courses WHERE course_code = ?", 
@@ -32,10 +39,10 @@ export const addCourse = async (req, res) => {
     }
 
     const insertQuery = `
-      INSERT INTO courses(course_code, course_name, course_type, createdAt)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO courses(course_code, course_name, course_type, course_category, createdAt)
+      VALUES (?, ?, ?, ?, ?)
     `;
-    const values = [course_code, course_name, course_type, moment().format("YYYY-MM-DD HH:mm:ss")];
+    const values = [course_code, course_name, course_type, course_category, moment().format("YYYY-MM-DD HH:mm:ss")];
     const [result] = await db.execute(insertQuery, values);
 
     res.status(201).json({
@@ -71,9 +78,16 @@ export const getDashboardStats = async (req, res) => {
 // GET all courses
 export const getCourses = async (req, res) => {
   try {
-    const [results] = await db.execute(
-      "SELECT course_id, course_code, course_name, course_type FROM courses"
-    );
+    const { course_category } = req.query || {};
+    let sql = "SELECT course_id, course_code, course_name, course_type, course_category FROM courses";
+    const params = [];
+
+    if (course_category) {
+      sql += " WHERE course_category = ?";
+      params.push(course_category);
+    }
+
+    const [results] = await db.execute(sql, params);
     res.json(results);
   } catch (err) {
     console.error(err);
@@ -113,7 +127,7 @@ export const getCourseById = async (req, res) => {
 // UPDATE course
 export const updateCourse = async (req, res) => {
   try {
-    const { course_code, course_name, course_type } = req.body;
+    const { course_code, course_name, course_type, course_category = 'Technical' } = req.body;
     const { id } = req.params;
 
     if (!course_code || !course_name || !course_type) {
@@ -122,11 +136,17 @@ export const updateCourse = async (req, res) => {
       });
     }
 
-    // Validate course_type value
     const validCourseTypes = ['non_modular', 'stage_based', 'modular', 'level_based', 'grade_based'];
     if (!validCourseTypes.includes(course_type)) {
       return res.status(400).json({ 
         error: "Invalid course type. Must be one of: " + validCourseTypes.join(', ') 
+      });
+    }
+
+    const validCourseCategories = ['Technical', 'Business'];
+    if (!validCourseCategories.includes(course_category)) {
+      return res.status(400).json({ 
+        error: "Invalid course category. Must be Technical or Business" 
       });
     }
 
@@ -142,10 +162,10 @@ export const updateCourse = async (req, res) => {
 
     const updateQuery = `
       UPDATE courses
-      SET course_code = ?, course_name = ?, course_type = ?, updatedAt = ?
+      SET course_code = ?, course_name = ?, course_type = ?, course_category = ?, updatedAt = ?
       WHERE course_id = ?
     `;
-    const values = [course_code, course_name, course_type, moment().format("YYYY-MM-DD HH:mm:ss"), id];
+    const values = [course_code, course_name, course_type, course_category, moment().format("YYYY-MM-DD HH:mm:ss"), id];
     const [result] = await db.execute(updateQuery, values);
 
     if (result.affectedRows === 0) {

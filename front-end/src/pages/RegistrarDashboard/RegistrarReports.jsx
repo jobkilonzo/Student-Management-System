@@ -160,7 +160,7 @@ const RegistrarReports = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_35%,_#f8fafc_78%)] p-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e0f2fe,_#f0f9ff_35%,_#f8fafc_78%)] p-4 sm:p-6 lg:p-8">
       {/* Header Section with Back Button */}
       <div className="mb-10">
         <div className="flex items-center gap-4 mb-4">

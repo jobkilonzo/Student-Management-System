@@ -1,6 +1,7 @@
 import db from "../../database/mysql_database.js";
 import moment from "moment";
 import XLSX from "xlsx";
+import { applyCourseFeesToStudent } from "../../services/studentFees.js";
 
 // -------------------- BULK IMPORT STUDENTS FROM EXCEL --------------------
 export const importStudentsExcel = async (req, res) => {
@@ -91,7 +92,7 @@ export const addStudent = async (req, res) => {
     let {
       first_name, middle_name, last_name, gender, dob,
       id_number, phone, email, course_id, module, term,
-      guardian_name, guardian_phone, address
+      guardian_name, guardian_phone, address, selected_fee_ids
     } = body;
 
     course_id = parseInt(course_id);
@@ -128,6 +129,33 @@ export const addStudent = async (req, res) => {
 
     const [result] = await db.execute(insertQuery, values);
     const studentId = result.insertId;
+
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const hasSelectedFeeIds = Object.prototype.hasOwnProperty.call(body, "selected_fee_ids");
+      const selectedFeeIds = Array.isArray(selected_fee_ids)
+        ? selected_fee_ids
+        : selected_fee_ids
+          ? String(selected_fee_ids).split(",")
+          : [];
+
+      await applyCourseFeesToStudent(connection, {
+        studentId,
+        courseId: course_id,
+        module,
+        term,
+        selectedFeeIds,
+        actorId: req.user?.id || null,
+        applyAllWhenEmpty: !hasSelectedFeeIds,
+      });
+      await connection.commit();
+    } catch (feeErr) {
+      try { await connection.rollback(); } catch {}
+      throw feeErr;
+    } finally {
+      connection.release();
+    }
 
     res.status(201).json({ success: true, message: "Student added successfully", id: studentId, reg_no });
   } catch (err) {
@@ -429,7 +457,7 @@ export const getStudents = async (req, res) => {
       SELECT s.*, c.course_code, c.course_name, c.course_id
       FROM students s
       LEFT JOIN courses c ON s.course_id = c.course_id
-      ORDER BY s.createdAt DESC
+      ORDER BY s.last_name ASC, s.first_name ASC, s.reg_no ASC
     `);
     res.json(results);
   } catch (err) {

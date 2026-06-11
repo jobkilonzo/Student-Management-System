@@ -17,10 +17,14 @@ import markRoutes from "./routes/tutor/route.marks.js";
 import attendanceRoutes from "./routes/tutor/route.attendance.js"; 
 import generateTranscriptRouter from "./routes/registrar/route.generateTranscript.js"; 
 import notificationsRouter from "./routes/registrar/routes.notifications.js";
+import registrarExamCardsRouter from "./routes/registrar/routes.examCards.js";
 import studentRouter from "./routes/student/routes.student.js"; 
 import accountantRouter from "./routes/accountant/routes.accountant.js";
 import { initDatabase } from "./database/init.js";
 import examsRouter from "./routes/exams.routes.js";
+import timetableRouter from "./routes/exams/routes.timetable.js";
+import eligibilityRouter from "./routes/exams/routes.eligibility.js";
+import examSessionsRouter from "./routes/examSessions.routes.js";
 import { setIO } from "./services/realtime.js";
 import secretaryRouter from "./routes/secretary/routes.secretary.js";
 
@@ -74,6 +78,7 @@ app.use('/api/v1/registrar/units', unitsRouter);
 app.use('/api/v1/registrar/transcript', generateTranscriptRouter);
 app.use('/api/v1/registrar/students', studentsRouter);
 app.use('/api/v1/registrar/notifications', notificationsRouter(io)); // ✅ io is ready
+app.use('/api/v1/registrar/exam-cards', registrarExamCardsRouter);
 app.use('/api/v1/registrar/unit-assignments', unitAssignment);
 app.use('/api/v1/tutor', tutorRoutes);
 app.use('/api/v1/marks', markRoutes);
@@ -82,6 +87,9 @@ app.use('/api/v1/student', studentRouter);
 app.use('/api/v1/accountant', accountantRouter);
 app.use('/api/v1/secretary', secretaryRouter);
 app.use('/api/v1/exams', examsRouter);
+app.use('/api/v1/exams/timetable', timetableRouter);
+app.use('/api/v1/exams/eligibility', eligibilityRouter);
+app.use('/api/v1/exam-sessions', examSessionsRouter);
 
 // Start server
 server.listen(PORT, () => {

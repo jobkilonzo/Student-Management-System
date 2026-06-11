@@ -1,5 +1,16 @@
 import db from "../../database/mysql_database.js";
-import moment from "moment";
+
+/** Course type helper */
+const MODULAR_TYPES = new Set([
+  "modular",
+  "grade_based",
+  "stage_based",
+  "level_based",
+]);
+
+const isModularCourse = (courseType) => {
+  return MODULAR_TYPES.has(String(courseType).trim().toLowerCase());
+};
 
 /** Assign Unit */
 export const assignUnit = async (req, res) => {
@@ -9,7 +20,7 @@ export const assignUnit = async (req, res) => {
     tutorId = Number(tutorId);
     unitId = Number(unitId);
     courseId = Number(courseId);
-    module = module || "Module 1";
+    module = module || "";
 
     if (!tutorId || !unitId || !courseId) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -19,7 +30,13 @@ export const assignUnit = async (req, res) => {
       INSERT INTO unit_assignments (tutor_id, unit_id, course_id, module)
       VALUES (?, ?, ?, ?)
     `;
-    const [result] = await db.execute(insertQuery, [tutorId, unitId, courseId, module]);
+
+    const [result] = await db.execute(insertQuery, [
+      tutorId,
+      unitId,
+      courseId,
+      module,
+    ]);
 
     res.status(201).json({
       message: "Unit assigned successfully",
@@ -46,6 +63,7 @@ export const getAssignments = async (req, res) => {
       JOIN users ON ua.tutor_id = users.id
       ORDER BY ua.assigned_at DESC
     `;
+
     const [results] = await db.execute(query);
     res.json({ assignments: results });
   } catch (err) {
@@ -73,6 +91,7 @@ export const getAssignmentsWithControls = async (req, res) => {
         ON umc.unit_id = ua.unit_id AND umc.tutor_id = ua.tutor_id
       ORDER BY ua.assigned_at DESC
     `;
+
     const [results] = await db.execute(query);
     res.json({ assignments: results });
   } catch (err) {
@@ -91,7 +110,8 @@ export const updateControl = async (req, res) => {
     }
 
     const query = `
-      INSERT INTO unit_mark_controls (tutor_id, unit_id, can_enter_marks, can_edit_delete)
+      INSERT INTO unit_mark_controls 
+        (tutor_id, unit_id, can_enter_marks, can_edit_delete)
       VALUES (?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         can_enter_marks = VALUES(can_enter_marks),
@@ -138,16 +158,28 @@ export const unassignUnit = async (req, res) => {
 export const checkIfUserIsTutor = async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
-      return res.status(401).json({ message: "Unauthorized, user info missing" });
+      return res.status(401).json({
+        message: "Unauthorized, user info missing",
+      });
     }
 
     const userId = req.user.id;
-    const query = `SELECT COUNT(*) AS count FROM unit_assignments WHERE tutor_id = ?`;
+
+    const query = `
+      SELECT COUNT(*) AS count 
+      FROM unit_assignments 
+      WHERE tutor_id = ?
+    `;
+
     const [rows] = await db.execute(query, [userId]);
 
-    res.json({ isTutor: rows[0].count > 0 });
+    res.json({
+      isTutor: rows[0].count > 0,
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Error checking tutor assignments" });
+    res.status(500).json({
+      message: "Error checking tutor assignments",
+    });
   }
 };

@@ -12,6 +12,7 @@ const TYPES = [
 const SecretaryStudents = () => {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
+  const [courseFees, setCourseFees] = useState([]);
   const [students, setStudents] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -42,6 +43,7 @@ const SecretaryStudents = () => {
     phone: "",
     guardian_name: "",
     guardian_phone: "",
+    selected_fee_ids: [],
   });
 
   const selectedCourse = useMemo(() => {
@@ -100,6 +102,27 @@ const SecretaryStudents = () => {
     return ["Term 1", "Term 2", "Term 3"];
   }, [form.course_id]);
 
+  const matchingFees = useMemo(() => {
+    if (!form.course_id || !form.term) return [];
+
+    const course = courseFees.find((item) => String(item.course_id) === String(form.course_id));
+    if (!course?.fees_per_term?.length) return [];
+
+    return course.fees_per_term.filter((fee) => {
+      const termMatches = String(fee.term) === String(form.term);
+      const levelMatches = courseConfig.hasLevels
+        ? String(fee.module) === String(form.level)
+        : fee.module === null || fee.module === undefined || fee.module === "";
+      return termMatches && levelMatches;
+    });
+  }, [courseFees, courseConfig.hasLevels, form.course_id, form.level, form.term]);
+
+  const selectedFeeTotal = useMemo(() => {
+    return matchingFees
+      .filter((fee) => form.selected_fee_ids.includes(fee.id))
+      .reduce((sum, fee) => sum + Number(fee.amount || 0), 0);
+  }, [form.selected_fee_ids, matchingFees]);
+
   const fetchCourses = async () => {
     try {
       const res = await makeRequest.get("/secretary/courses");
@@ -108,6 +131,17 @@ const SecretaryStudents = () => {
       console.error(err);
       toast.error("Failed to load courses");
       setCourses([]);
+    }
+  };
+
+  const fetchCourseFees = async () => {
+    try {
+      const res = await makeRequest.get("/secretary/course-fees");
+      setCourseFees(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setCourseFees([]);
+      toast.error("Failed to load fee options");
     }
   };
 
@@ -138,11 +172,20 @@ const SecretaryStudents = () => {
 
   useEffect(() => {
     fetchCourses();
+    fetchCourseFees();
   }, []);
 
   useEffect(() => {
     fetchStudents();
   }, [filters.page, filters.limit, filters.search, filters.course_id, filters.level, filters.term]);
+
+  useEffect(() => {
+    if (editing || !form.course_id || !form.term || (courseConfig.hasLevels && !form.level)) return;
+    setForm((prev) => ({
+      ...prev,
+      selected_fee_ids: matchingFees.map((fee) => fee.id),
+    }));
+  }, [courseConfig.hasLevels, editing, form.course_id, form.level, form.term, matchingFees]);
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / filters.limit)), [total, filters.limit]);
 
@@ -161,6 +204,7 @@ const SecretaryStudents = () => {
       phone: "",
       guardian_name: "",
       guardian_phone: "",
+      selected_fee_ids: [],
     });
     setShowForm(true);
   };
@@ -183,6 +227,7 @@ const SecretaryStudents = () => {
         phone: s.phone || "",
         guardian_name: s.guardian_name || "",
         guardian_phone: s.guardian_phone || "",
+        selected_fee_ids: [],
       });
       setShowForm(true);
     } catch (err) {
@@ -205,6 +250,7 @@ const SecretaryStudents = () => {
         guardian_phone: form.guardian_phone,
         term: form.term ? Number(form.term) : undefined,
         course_id: form.course_id ? Number(form.course_id) : undefined,
+        selected_fee_ids: form.selected_fee_ids,
       };
 
       // Add level based on course type
@@ -519,7 +565,7 @@ const SecretaryStudents = () => {
                 <span className="mb-2 block text-sm font-semibold text-slate-700">Course *</span>
                 <select
                   value={form.course_id}
-                  onChange={(e) => setForm((p) => ({ ...p, course_id: e.target.value, level: "", term: "" }))}
+                  onChange={(e) => setForm((p) => ({ ...p, course_id: e.target.value, level: "", term: "", selected_fee_ids: [] }))}
                   required
                   className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 shadow-sm outline-none focus:border-sky-500"
                 >
@@ -538,7 +584,7 @@ const SecretaryStudents = () => {
                   <span className="mb-2 block text-sm font-semibold text-slate-700">{courseConfig.label} *</span>
                   <select
                     value={form.level}
-                    onChange={(e) => setForm((p) => ({ ...p, level: e.target.value, term: "" }))}
+                    onChange={(e) => setForm((p) => ({ ...p, level: e.target.value, term: "", selected_fee_ids: [] }))}
                     required
                     disabled={!form.course_id}
                     className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 shadow-sm outline-none focus:border-sky-500 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -559,7 +605,7 @@ const SecretaryStudents = () => {
                 <span className="mb-2 block text-sm font-semibold text-slate-700">Term *</span>
                 <select
                   value={form.term}
-                  onChange={(e) => setForm((p) => ({ ...p, term: e.target.value }))}
+                  onChange={(e) => setForm((p) => ({ ...p, term: e.target.value, selected_fee_ids: [] }))}
                   required
                   disabled={!form.course_id || (courseConfig.hasLevels && !form.level)}
                   className="w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 shadow-sm outline-none focus:border-sky-500 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -594,6 +640,50 @@ const SecretaryStudents = () => {
                 value={form.guardian_phone} 
                 onChange={(v) => setForm((p) => ({ ...p, guardian_phone: v }))} 
               />
+
+              {!editing && form.course_id && form.term && (!courseConfig.hasLevels || form.level) && (
+                <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Fees for this student</p>
+                      <p className="text-xs text-slate-500">Pick the fee items to assign for the selected course, module, and term.</p>
+                    </div>
+                    <div className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-800">
+                      Total: KSh {selectedFeeTotal.toLocaleString()}
+                    </div>
+                  </div>
+
+                  {matchingFees.length === 0 ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      No fee setup found for this course selection. The student can still be created, then accountant can edit fees later.
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {matchingFees.map((fee) => (
+                        <label key={fee.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={form.selected_fee_ids.includes(fee.id)}
+                            onChange={(e) => {
+                              setForm((prev) => ({
+                                ...prev,
+                                selected_fee_ids: e.target.checked
+                                  ? [...prev.selected_fee_ids, fee.id]
+                                  : prev.selected_fee_ids.filter((id) => id !== fee.id),
+                              }));
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-sky-700"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-slate-800">{fee.fee_type_name}</span>
+                            <span className="block text-xs text-slate-500">KSh {Number(fee.amount || 0).toLocaleString()}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Form Actions */}
               <div className="md:col-span-2 flex justify-end gap-3 pt-4 border-t border-slate-200">

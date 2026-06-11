@@ -13,7 +13,7 @@ const coursesRouter = Router();
 
 // All routes require authentication and registrar/admin role
 coursesRouter.use(authenticateToken);
-coursesRouter.use(authorizeRoles("registrar", "admin"));
+coursesRouter.use(authorizeRoles("registrar", "admin", "exam_officer"));
 
 coursesRouter.post('/create', addCourse);
 coursesRouter.get('/dashboard', getDashboardStats);   // ✅ MOVE THIS UP
